@@ -1,0 +1,10 @@
+{
+  "version": "2",
+  "editor": {
+    "simulation": true,
+    "showDiagramViewer": true
+  },
+  "wokwi": {
+    "diagram": "diagram.json"
+  }
+}

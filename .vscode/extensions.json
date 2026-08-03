@@ -1,0 +1,18 @@
+{
+  "recommendations": [
+    "platformio.platformio-ide",
+    "ms-python.python",
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
+    "eamodio.gitlens",
+    "usernamehw.errorlens",
+    "codegeex.codegeex4",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "ms-vscode.live-server",
+    "formulahendry.code-runner",
+    "oderwat.indent-rainbow",
+    "aaron-bond.better-comments",
+    "streetsidesoftware.code-spell-checker"
+  ]
+}

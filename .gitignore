@@ -1,0 +1,80 @@
+# CYNEXIS — .gitignore
+# ============================================================
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.env
+.venv
+venv/
+env/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ---- AI / ML models (too large for git) ----
+AI/models/*.pt
+AI/models/*.onnx
+AI/models/*.engine
+AI/datasets/
+
+# ---- Node.js / React ----
+Frontend/node_modules/
+Frontend/.next/
+Frontend/dist/
+Frontend/build/
+Frontend/.env.local
+Frontend/.env
+
+# ---- Arduino / ESP32 ----
+Firmware/**/.arduino15/
+Firmware/**/build/
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+
+# ---- VS Code ----
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+# Keep: .vscode/extensions.json (shared team extensions)
+
+# ---- KiCad ----
+Schematics/**/*.000
+Schematics/**/*.bak
+Schematics/**/-backups/
+
+# ---- OS files ----
+.DS_Store
+Thumbs.db
+desktop.ini
+*.lnk
+
+# ---- Logs ----
+*.log
+Tests/Logs/*.csv
+Tests/Logs/*.json
+
+# ---- Temporary files ----
+*.tmp
+*.swp
+*.bak
+~$*
+
+# ---- Large media (store separately if needed) ----
+Videos/*.mp4
+Videos/*.avi
+
+# ---- Secrets (never commit these) ----
+*.secret
+secrets.json
+config.local.*

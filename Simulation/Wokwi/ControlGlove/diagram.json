@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "author": "CYNEXIS",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-v1",
+      "id": "esp32",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -50,
+      "left": 200,
+      "attrs": { "value": "10000" },
+      "label": "Thumb divider"
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": -20,
+      "left": 200,
+      "attrs": { "value": "10000" },
+      "label": "Index divider"
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r3",
+      "top": 10,
+      "left": 200,
+      "attrs": { "value": "10000" },
+      "label": "Middle divider"
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r4",
+      "top": 40,
+      "left": 200,
+      "attrs": { "value": "10000" },
+      "label": "Ring divider"
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r5",
+      "top": 70,
+      "left": 200,
+      "attrs": { "value": "10000" },
+      "label": "Pinky divider"
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": 100,
+      "left": 300,
+      "attrs": { "color": "green" },
+      "label": "Status LED"
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r6",
+      "top": 100,
+      "left": 250,
+      "attrs": { "value": "220" }
+    }
+  ],
+  "connections": [
+    ["esp32:GND.1", "r1:2", "black", []],
+    ["esp32:GND.1", "r2:2", "black", []],
+    ["esp32:GND.1", "r3:2", "black", []],
+    ["esp32:GND.1", "r4:2", "black", []],
+    ["esp32:GND.1", "r5:2", "black", []],
+    ["esp32:3V3", "r1:1", "red", []],
+    ["esp32:3V3", "r2:1", "red", []],
+    ["esp32:3V3", "r3:1", "red", []],
+    ["esp32:3V3", "r4:1", "red", []],
+    ["esp32:3V3", "r5:1", "red", []],
+    ["r1:2", "esp32:34", "orange", []],
+    ["r2:2", "esp32:35", "orange", []],
+    ["r3:2", "esp32:32", "orange", []],
+    ["r4:2", "esp32:33", "orange", []],
+    ["r5:2", "esp32:25", "orange", []],
+    ["esp32:2", "r6:1", "green", []],
+    ["r6:2", "led1:A", "green", []],
+    ["led1:C", "esp32:GND.2", "black", []]
+  ],
+  "dependencies": {}
+}
