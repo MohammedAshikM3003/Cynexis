@@ -1,5 +1,5 @@
 # CYNEXIS — Software Installation Checklist
-> Day 0 | 2026-08-03 | Complete before hardware arrives
+> Day 0 | 2026-08-03 | Last verified: 2026-08-03 17:44 IST
 
 ---
 
@@ -18,19 +18,21 @@
 
 | # | Software | Version | Purpose | Status | Download |
 |---|----------|---------|---------|--------|----------|
-| 1 | VS Code | 1.130+ | Main editor | ✅ Installed | code.visualstudio.com |
-| 2 | Arduino IDE | 2.x | ESP32 flashing | ⏳ | arduino.cc/en/software |
-| 3 | Python | 3.12 recommended | AI + backend | ⚙️ 3.8.10 (upgrade recommended) | python.org |
-| 4 | Git | 2.x | Version control | ✅ 2.53.0 | git-scm.com |
-| 5 | GitHub Desktop | latest | Repo UI | ⏳ | desktop.github.com |
-| 6 | KiCad | 8.x | Circuit design | ⏳ | kicad.org |
-| 7 | Fusion 360 | latest | CAD / mechanical | ⏳ | autodesk.com/fusion |
+| 1 | Antigravity IDE | latest | Main editor (replaces VS Code) | ✅ In use | antigravity.ai |
+| 2 | Arduino IDE | 2.3.10 | ESP32 flashing | ✅ Installed | arduino.cc/en/software |
+| 3 | Python | 3.12.10 | AI + backend | ✅ 3.12.10 venv active (.venv) | python.org |
+| 4 | Git | 2.53.0 | Version control | ✅ Installed | git-scm.com |
+| 5 | GitHub Desktop | — | Repo UI | ❌ Not needed (using GitHub web) | — |
+| 6 | KiCad | 10.0.5 | Circuit design | ✅ Installed | kicad.org |
+| 7 | Fusion 360 | latest | CAD / mechanical | ❌ Skipped (paid) | autodesk.com/fusion |
 | 8 | Wokwi | (browser) | Simulation | ✅ wokwi.com | No install needed |
-| 9 | Postman | latest | API testing | ⏳ | postman.com |
+| 9 | Postman | latest | API testing | ✅ Installed | postman.com |
 
 ---
 
-## SECTION B — VS CODE EXTENSIONS
+## SECTION B — EXTENSIONS (Antigravity IDE)
+
+> ℹ️ **Note:** Using **Antigravity IDE** instead of VS Code. All extension workflows that previously referenced VS Code apply here.
 
 | # | Extension | Purpose | Status |
 |---|-----------|---------|--------|
@@ -43,11 +45,11 @@
 | 7 | Indent Rainbow | Indent visualization | ✅ Installed |
 | 8 | Better Comments | Color-coded comments | ✅ Installed |
 | 9 | Code Spell Checker | Spell check in code | ✅ Installed |
-| 10 | PlatformIO (manual) | Advanced ESP32 toolchain | ⏳ Install manually |
+| 10 | PlatformIO IDE v3.3.4 | Advanced ESP32 toolchain | ✅ Installed |
 | 11 | CodeGeeX (manual) | AI coding assistant | ⏳ Install manually |
 | 12 | CMake Tools | CMake support | ⏳ Install manually |
 
-**Manual installs:** Open VS Code → Ctrl+Shift+X → search and install PlatformIO and CodeGeeX.
+**Manual installs:** Open Antigravity IDE → Extensions panel (Ctrl+Shift+X) → search and install CMake Tools.
 
 ---
 
@@ -143,7 +145,7 @@ gh auth login
 | Task | Status |
 |------|--------|
 | Python packages installed | ✅ |
-| VS Code extensions installed | ✅ |
+| Antigravity IDE extensions installed | ✅ |
 | Project folder structure created | ✅ |
 | ESP-NOW protocol designed | ✅ |
 | Control Glove firmware written | ✅ |
@@ -156,13 +158,15 @@ gh auth login
 | Git init + initial commit | ✅ |
 | GitHub remote configured | ✅ |
 | README.md complete | ✅ |
-| Arduino IDE setup | ⏳ Manual |
-| Arduino libraries installed | ⏳ After Arduino IDE |
-| GitHub push authenticated | ⏳ Needs auth |
-| GitHub Desktop installed | ⏳ Optional |
-| KiCad installed | ⏳ Needed later |
-| Fusion 360 installed | ⏳ Needed later |
-| Postman installed | ⏳ Needed later |
+| Arduino IDE 2.3.10 installed | ✅ |
+| KiCad 10.0.5 installed | ✅ |
+| Arduino ESP32 board support added | ✅ esp32 by Espressif Systems |
+| Arduino libraries installed | ✅ All 5 Adafruit libs |
+| GitHub push authenticated | ✅ Verified (push confirmed) |
+| GitHub Desktop | ❌ Not needed (using web) |
+| Fusion 360 | ❌ Skipped (paid software) |
+| Postman installed | ✅ Installed |
+| PlatformIO IDE v3.3.4 extension installed | ✅ |
 
 ---
 
@@ -180,3 +184,31 @@ gh auth login
 ---
 
 *CYNEXIS — Day 0 Complete. Environment ready. Hardware incoming.* 🚀
+
+---
+
+## DEPENDENCY STATUS SNAPSHOT (verified 2026-08-03)
+
+| Category | Item | Status |
+|----------|------|--------|
+| **IDE** | Antigravity IDE | ✅ Active |
+| **Firmware** | Arduino IDE 2.3.10 | ✅ Installed |
+| **Firmware** | ESP32 board support (Espressif) | ✅ Installed |
+| **Firmware** | Adafruit Arduino libraries (5) | ✅ Installed |
+| **Circuit** | KiCad 10.0.5 | ✅ Installed |
+| **CAD** | Fusion 360 | ❌ Skipped (paid) |
+| **Python** | numpy 1.24.4 | ✅ |
+| **Python** | opencv-python 5.0.0.93 | ✅ |
+| **Python** | mediapipe 1.0.0 | ✅ |
+| **Python** | ultralytics 8.4.115 | ✅ |
+| **Python** | pyserial 3.5 | ✅ |
+| **Python** | fastapi 0.124.4 | ✅ |
+| **Python** | uvicorn 0.33.0 | ✅ |
+| **Python** | websockets 13.1 | ✅ |
+| **Python** | matplotlib 3.7.5 | ✅ |
+| **Python** | pandas 2.0.3 | ✅ |
+| **Python** | torch 2.4.1 | ✅ |
+| **VCS** | Git 2.53.0 | ✅ |
+| **Extensions** | Python, C/C++, GitLens, etc. | ✅ |
+| **Extensions** | PlatformIO v3.3.4 | ✅ Installed |
+| **Python** | 3.12.10 venv (.venv) | ✅ Active |
