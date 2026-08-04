@@ -22,7 +22,7 @@
  *   Flex sensor 1 (index)  → GPIO 35 (ADC1_CH7, input only)
  *   Flex sensor 2 (middle) → GPIO 32 (ADC1_CH4)
  *   Flex sensor 3 (ring)   → GPIO 33 (ADC1_CH5)
- *   Flex sensor 4 (pinky)  → GPIO 25 (ADC1_CH8)
+ *   Flex sensor 4 (pinky)  → GPIO 39 (VP, ADC1_CH3, input only)
  *   MPU6050 SDA            → GPIO 21
  *   MPU6050 SCL            → GPIO 22
  *   Battery voltage sense  → GPIO 36 (VP, ADC1_CH0, input only)
@@ -52,7 +52,7 @@
 #define PIN_FLEX_INDEX    35
 #define PIN_FLEX_MIDDLE   32
 #define PIN_FLEX_RING     33
-#define PIN_FLEX_PINKY    25
+#define PIN_FLEX_PINKY    39   // VP — input only (changed from GPIO25, 2026-08-04)
 #define PIN_BATT_SENSE    36   // Voltage divider: Vbatt -> 100kΩ -> pin -> 100kΩ -> GND
 #define PIN_STATUS_LED    2
 

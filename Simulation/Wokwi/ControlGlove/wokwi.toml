@@ -1,10 +1,4 @@
-{
-  "version": "2",
-  "editor": {
-    "simulation": true,
-    "showDiagramViewer": true
-  },
-  "wokwi": {
-    "diagram": "diagram.json"
-  }
-}
+[wokwi]
+version = 1
+firmware = "control_glove_sim.ino"
+chip = "esp32"

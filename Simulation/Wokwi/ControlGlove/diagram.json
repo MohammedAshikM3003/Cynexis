@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "author": "CYNEXIS",
+  "author": "CYNEXIS — Mohammed Ashik M",
   "editor": "wokwi",
   "parts": [
     {
@@ -11,80 +11,99 @@
       "attrs": {}
     },
     {
-      "type": "wokwi-resistor",
-      "id": "r1",
-      "top": -50,
-      "left": 200,
-      "attrs": { "value": "10000" },
-      "label": "Thumb divider"
+      "type": "wokwi-mpu6050",
+      "id": "mpu1",
+      "top": -130,
+      "left": -220,
+      "attrs": {},
+      "label": "MPU6050 IMU"
     },
     {
-      "type": "wokwi-resistor",
-      "id": "r2",
+      "type": "wokwi-potentiometer",
+      "id": "flex1",
+      "top": -180,
+      "left": 300,
+      "attrs": { "value": "0.3" },
+      "label": "Flex Thumb (GPIO34)"
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "flex2",
+      "top": -100,
+      "left": 300,
+      "attrs": { "value": "0.3" },
+      "label": "Flex Index (GPIO35)"
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "flex3",
       "top": -20,
-      "left": 200,
-      "attrs": { "value": "10000" },
-      "label": "Index divider"
+      "left": 300,
+      "attrs": { "value": "0.3" },
+      "label": "Flex Middle (GPIO32)"
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "flex4",
+      "top": 60,
+      "left": 300,
+      "attrs": { "value": "0.3" },
+      "label": "Flex Ring (GPIO33)"
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "flex5",
+      "top": 140,
+      "left": 300,
+      "attrs": { "value": "0.3" },
+      "label": "Flex Pinky (GPIO39)"
     },
     {
       "type": "wokwi-resistor",
-      "id": "r3",
-      "top": 10,
+      "id": "rled",
+      "top": 230,
       "left": 200,
-      "attrs": { "value": "10000" },
-      "label": "Middle divider"
-    },
-    {
-      "type": "wokwi-resistor",
-      "id": "r4",
-      "top": 40,
-      "left": 200,
-      "attrs": { "value": "10000" },
-      "label": "Ring divider"
-    },
-    {
-      "type": "wokwi-resistor",
-      "id": "r5",
-      "top": 70,
-      "left": 200,
-      "attrs": { "value": "10000" },
-      "label": "Pinky divider"
+      "attrs": { "value": "220" },
+      "label": "LED 220ohm"
     },
     {
       "type": "wokwi-led",
       "id": "led1",
-      "top": 100,
-      "left": 300,
+      "top": 230,
+      "left": 290,
       "attrs": { "color": "green" },
-      "label": "Status LED"
-    },
-    {
-      "type": "wokwi-resistor",
-      "id": "r6",
-      "top": 100,
-      "left": 250,
-      "attrs": { "value": "220" }
+      "label": "Status LED (GPIO2)"
     }
   ],
   "connections": [
-    ["esp32:GND.1", "r1:2", "black", []],
-    ["esp32:GND.1", "r2:2", "black", []],
-    ["esp32:GND.1", "r3:2", "black", []],
-    ["esp32:GND.1", "r4:2", "black", []],
-    ["esp32:GND.1", "r5:2", "black", []],
-    ["esp32:3V3", "r1:1", "red", []],
-    ["esp32:3V3", "r2:1", "red", []],
-    ["esp32:3V3", "r3:1", "red", []],
-    ["esp32:3V3", "r4:1", "red", []],
-    ["esp32:3V3", "r5:1", "red", []],
-    ["r1:2", "esp32:34", "orange", []],
-    ["r2:2", "esp32:35", "orange", []],
-    ["r3:2", "esp32:32", "orange", []],
-    ["r4:2", "esp32:33", "orange", []],
-    ["r5:2", "esp32:25", "orange", []],
-    ["esp32:2", "r6:1", "green", []],
-    ["r6:2", "led1:A", "green", []],
-    ["led1:C", "esp32:GND.2", "black", []]
+    ["esp32:3V3",   "mpu1:VCC",  "red",    []],
+    ["esp32:GND.1", "mpu1:GND",  "black",  []],
+    ["esp32:21",    "mpu1:SDA",  "blue",   []],
+    ["esp32:22",    "mpu1:SCL",  "yellow", []],
+
+    ["esp32:3V3",   "flex1:VCC", "red",    []],
+    ["esp32:GND.1", "flex1:GND", "black",  []],
+    ["flex1:SIG",   "esp32:34",  "orange", []],
+
+    ["esp32:3V3",   "flex2:VCC", "red",    []],
+    ["esp32:GND.1", "flex2:GND", "black",  []],
+    ["flex2:SIG",   "esp32:35",  "orange", []],
+
+    ["esp32:3V3",   "flex3:VCC", "red",    []],
+    ["esp32:GND.1", "flex3:GND", "black",  []],
+    ["flex3:SIG",   "esp32:32",  "orange", []],
+
+    ["esp32:3V3",   "flex4:VCC", "red",    []],
+    ["esp32:GND.1", "flex4:GND", "black",  []],
+    ["flex4:SIG",   "esp32:33",  "orange", []],
+
+    ["esp32:3V3",   "flex5:VCC", "red",    []],
+    ["esp32:GND.1", "flex5:GND", "black",  []],
+    ["flex5:SIG",   "esp32:39",  "orange", []],
+
+    ["esp32:2",     "rled:1",    "green",  []],
+    ["rled:2",      "led1:A",    "green",  []],
+    ["led1:C",      "esp32:GND.2","black", []]
   ],
   "dependencies": {}
 }
