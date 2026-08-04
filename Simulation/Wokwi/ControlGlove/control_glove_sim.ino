@@ -54,6 +54,21 @@
 #define FLEX_BENT_ADC      3500   // ~2.8V when fully bent
 
 // ============================================================
+// TIMING
+// ============================================================
+const uint32_t LOOP_TIME = 50;   // ms per loop iteration (~20 Hz)
+
+// ============================================================
+// GESTURE ENUM
+// ============================================================
+enum Gesture {
+    GESTURE_OPEN,
+    GESTURE_FIST,
+    GESTURE_POINT,
+    GESTURE_PARTIAL
+};
+
+// ============================================================
 // OBJECTS
 // ============================================================
 Adafruit_MPU6050 mpu;
@@ -91,11 +106,20 @@ void setup() {
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
     // --------------------------------------------------------
-    // GPIO config
+    // ADC config
     // --------------------------------------------------------
-    // GPIO34, 35, 39 are input-only — no pinMode needed
-    // GPIO32, 33 are bidirectional — still work as ADC input
-    Serial.println("[OK] GPIO configured.");
+    // 12-bit resolution: ADC values range 0–4095
+    analogReadResolution(12);
+
+    // ADC_11db attenuation: full 0–3.3V input range
+    // Required for flex sensors which swing up to ~3.0V
+    analogSetPinAttenuation(PIN_FLEX_THUMB,   ADC_11db);
+    analogSetPinAttenuation(PIN_FLEX_INDEX,   ADC_11db);
+    analogSetPinAttenuation(PIN_FLEX_MIDDLE,  ADC_11db);
+    analogSetPinAttenuation(PIN_FLEX_RING,    ADC_11db);
+    analogSetPinAttenuation(PIN_FLEX_PINKY,   ADC_11db);
+
+    Serial.println("[OK] ADC: 12-bit, 11dB attenuation (0-3.3V range).");
     Serial.println("[OK] All systems ready. Starting loop...\n");
 
     // Startup blink
@@ -159,15 +183,18 @@ void loop() {
     Serial.printf("  AccZ:  %6.3f m/s2\n", az);
 
     // Detect basic gestures
-    Serial.print("GESTURE: ");
     bool allBent   = (bend[0]>60 && bend[1]>60 && bend[2]>60 && bend[3]>60 && bend[4]>60);
     bool allOpen   = (bend[0]<20 && bend[1]<20 && bend[2]<20 && bend[3]<20 && bend[4]<20);
     bool indexOnly = (bend[1]<20 && bend[2]>60 && bend[3]>60 && bend[4]>60);
 
-    if (allBent)        Serial.println("FIST");
-    else if (allOpen)   Serial.println("OPEN");
-    else if (indexOnly) Serial.println("POINT");
-    else                Serial.println("PARTIAL");
+    Gesture g;
+    if      (allBent)   g = GESTURE_FIST;
+    else if (allOpen)   g = GESTURE_OPEN;
+    else if (indexOnly) g = GESTURE_POINT;
+    else                g = GESTURE_PARTIAL;
+
+    const char* gestureNames[] = { "OPEN", "FIST", "POINT", "PARTIAL" };
+    Serial.printf("GESTURE: %s\n", gestureNames[g]);
 
     Serial.println();
 
@@ -175,5 +202,5 @@ void loop() {
     digitalWrite(PIN_STATUS_LED, HIGH); delay(50);
     digitalWrite(PIN_STATUS_LED, LOW);
 
-    delay(450);  // ~1Hz update
+    delay(LOOP_TIME);  // 50ms = ~20 Hz update rate
 }
