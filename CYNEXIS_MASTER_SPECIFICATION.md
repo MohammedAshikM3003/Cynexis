@@ -1,6 +1,6 @@
-# CYNEXIS — Master Specification v2.0
+# CYNEXIS — Master Specification v2.1
 > **Single Source of Truth. Do not contradict this document.**
-> Version: 2.0 | Date: 2026-08-04 | Engineer: Mohammed Ashik M
+> Version: 2.1 | Date: 2026-08-04 | Status: Active | Engineer: Mohammed Ashik M
 
 ---
 
@@ -10,7 +10,7 @@
 |-------|-------|
 | **Name** | CYNEXIS |
 | **Tagline** | Connecting Human Intelligence with Machine Precision |
-| **Version** | 1.0 (build) / 2.0 (specification) |
+| **Version** | 2.1 (specification) / 1.0 (build) |
 | **Type** | AI-Powered Gesture-Controlled Robotic Platform |
 | **Status** | Phase 0 Complete — Phase 1 Starting |
 
@@ -137,6 +137,7 @@ These features existed in the old concept. They are **permanently removed**.
 | RB18 | 1N4007 Diode | 10 | Flyback protection |
 | RB19 | 1000µF 25V Capacitor | 4 | Electrolytic |
 | RB20 | 470µF 16V Capacitor | 4 | Electrolytic |
+| RB21 | INA219 Current/Voltage Sensor | 1 | I2C, measures current + power + battery runtime |
 
 ### 4.4 Vision System
 
@@ -361,7 +362,56 @@ The vision pipeline is explicitly:
 
 ---
 
-## 10. FOUR DOCUMENTS RULE
+## 12. SYSTEM STATE MACHINE
+
+The robot operates in one of these exclusive states at all times:
+
+| State | Description | Entry Condition | Exit Condition |
+|-------|-------------|-----------------|----------------|
+| `NORMAL` | Full operation, all systems active | Boot complete + link established | Any trigger below |
+| `IDLE` | No glove input for >5s, motors stopped | Timeout from NORMAL | Any glove input |
+| `MANUAL` | Direct gesture control, no AI | User selects on CYNEXIS OS | Mode switch |
+| `AI` | AI controls robot, glove monitors only | User selects on CYNEXIS OS | Mode switch |
+| `SAFE` | Reduced speed, obstacle avoidance active | HC-SR04 <30cm | Obstacle cleared |
+| `EMERGENCY` | All motors cut immediately | E-stop button OR FIST gesture >2s | Manual reset only |
+| `SHUTDOWN` | Graceful power-off sequence | Battery <10% OR user command | Power cycle |
+
+> **Rule:** `EMERGENCY` state can only be exited by a manual hardware reset. It cannot be cleared by software.
+
+---
+
+## 13. COMMUNICATION PACKET DEFINITION
+
+### Control Packet (Glove → Robot, 50 Hz, 24 bytes)
+
+| Field | Type | Bytes | Description |
+|-------|------|-------|-------------|
+| `timestamp` | uint32 | 4 | Milliseconds since boot |
+| `finger[5]` | uint16×5 | 10 | ADC values: thumb, index, middle, ring, pinky |
+| `roll` | int16 | 2 | MPU6050 roll · 100 (degrees ×100) |
+| `pitch` | int16 | 2 | MPU6050 pitch · 100 |
+| `battery` | uint8 | 1 | Glove battery % (0–100) |
+| `flags` | uint8 | 1 | Bit 0: E-stop, Bit 1: gesture lock, Bits 2-7: reserved |
+| `checksum` | uint16 | 2 | CRC16 of above bytes |
+
+### Status Packet (Robot → Status Glove, 10 Hz, 20 bytes)
+
+| Field | Type | Bytes | Description |
+|-------|------|-------|-------------|
+| `timestamp` | uint32 | 4 | Milliseconds since boot |
+| `battery_mv` | uint16 | 2 | Robot battery millivolts (INA219) |
+| `current_ma` | uint16 | 2 | Robot current draw milliamps (INA219) |
+| `distance_cm` | uint16 | 2 | HC-SR04 distance in cm |
+| `rssi` | int8 | 1 | ESP-NOW signal strength (dBm) |
+| `mode` | uint8 | 1 | System state: NORMAL/IDLE/MANUAL/AI/SAFE/EMERGENCY/SHUTDOWN |
+| `errors` | uint8 | 1 | Bit flags: motor fault, servo fault, sensor fault, etc. |
+| `temperature` | uint8 | 1 | Chassis temperature °C (future: NTC thermistor) |
+| `checksum` | uint16 | 2 | CRC16 of above bytes |
+| `reserved` | uint8×4 | 4 | For future expansion |
+
+---
+
+## 14. FOUR DOCUMENTS RULE
 
 When any change is made to the project, update **only these four files**:
 
@@ -374,7 +424,7 @@ When any change is made to the project, update **only these four files**:
 
 ---
 
-## 11. AI TOOL WORKFLOW
+## 15. AI TOOL WORKFLOW
 
 | Tool | Use For |
 |------|---------|
@@ -385,7 +435,7 @@ When any change is made to the project, update **only these four files**:
 
 ---
 
-## 12. ARCHITECTURE RULES
+## 16. ARCHITECTURE RULES
 
 1. **Never change the architecture without a critical reason and explanation**
 2. **Always estimate cost, power, risks, and reliability for any new component**
@@ -396,4 +446,4 @@ When any change is made to the project, update **only these four files**:
 
 ---
 
-*CYNEXIS Master Specification v2.0 — Architecture frozen. Build starts now.*
+*CYNEXIS Master Specification v2.1 — Architecture frozen. Build Phase 1 now.*

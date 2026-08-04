@@ -6,7 +6,25 @@ Types: ADDED | CHANGED | REMOVED | FIXED | ARCHITECTURE | HARDWARE | SOFTWARE
 
 ---
 
+## [2026-08-04] — Specification v2.1
+
+### FIXED
+- Version header corrected to v2.1 (was mismatched with changelog)
+- Duplicate section numbering fixed: 10/11/10/11/12 → 10/11/12/13/14/15/16
+
+### ADDED
+- RB21: INA219 Current/Voltage Sensor (I2C — current, power, battery runtime)
+- Section 12: System State Machine — 7 exclusive states (NORMAL, IDLE, MANUAL, AI, SAFE, EMERGENCY, SHUTDOWN)
+- Section 13: Communication Packet Definition — Control packet 24 bytes @50Hz, Status packet 20 bytes @10Hz
+- EMERGENCY rule: hardware reset only, cannot be cleared by software
+
+### FROZEN
+- Specification frozen for build. No more major features until Phase 4.
+
+---
+
 ## [2026-08-04] — Specification v2.0
+
 
 ### ARCHITECTURE
 - Locked CYNEXIS v2.0 architecture — no further changes without critical justification
