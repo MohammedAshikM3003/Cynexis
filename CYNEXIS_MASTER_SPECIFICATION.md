@@ -22,11 +22,13 @@ These features existed in the old concept. They are **permanently removed**.
 
 | Feature | Reason |
 |---------|--------|
-| Voice control (V1) | Replaced by INMP441 + AI assistant in status glove |
+| **Standalone voice-control mode** | Removed — no keyword-trigger-only commands |
 | Holographic module | Out of scope |
 | MongoDB | Replaced by SQLite + ChromaDB |
 | MQTT | Replaced by ESP-NOW + Wi-Fi |
 | TensorFlow | Replaced by PyTorch + YOLOv8 |
+
+> **Clarification:** *AI-assisted voice interaction is retained.* The INMP441 microphone, MAX98357A amplifier, and speaker are part of the status glove and support two-way AI conversation. What is removed is the old standalone voice-command-only control mode from V1.
 
 > **Rule:** Do not re-add any of these without a critical engineering justification.
 
@@ -84,19 +86,32 @@ These features existed in the old concept. They are **permanently removed**.
 
 ### 4.2 Status Glove
 
+> **Two-stage build. Do not attempt Stage B until Stage A is fully tested.**
+
+#### Stage A — Build First
+
 | ID | Component | Qty | Specs |
 |----|-----------|-----|-------|
 | SG01 | ESP32 Dev Module | 1 | 38-pin WROOM-32 |
 | SG02 | 3.5" Capacitive Touchscreen | 1 | ILI9488 or similar, SPI |
-| SG03 | INMP441 Microphone | 1 | I2S, 3.3V |
-| SG04 | MAX98357A Amplifier | 1 | I2S, 3W |
-| SG05 | Speaker | 1 | 3W, 4Ω or 8Ω |
-| SG06 | Vibration Motor | 1 | 3V coin-type |
-| SG07 | 2N2222 Transistor | 1 | NPN, TO-92 (for motor drive) |
-| SG08 | 18650 Li-ion Cell | 1-2 | 2500-3500 mAh |
-| SG09 | TP4056 Type-C Module | 1 | 1A, with protection |
-| SG10 | Power Switch SPST | 1 | ≥5A rated |
-| SG11 | Cotton Glove | 1 | Size L |
+| SG03 | Vibration Motor | 1 | 3V coin-type |
+| SG04 | 2N2222 Transistor | 1 | NPN, TO-92 (for motor drive) |
+| SG05 | 18650 Li-ion Cell | 1-2 | 2500-3500 mAh |
+| SG06 | TP4056 Type-C Module | 1 | 1A, with protection |
+| SG07 | Power Switch SPST | 1 | ≥5A rated |
+| SG08 | Cotton Glove | 1 | Size L |
+
+**Stage A goal:** CYNEXIS OS boots, touchscreen responds, vibration feedback works, ESP-NOW link active.
+
+#### Stage B — Add After Stage A Complete
+
+| ID | Component | Qty | Specs |
+|----|-----------|-----|-------|
+| SG09 | INMP441 Microphone | 1 | I2S, 3.3V |
+| SG10 | MAX98357A Amplifier | 1 | I2S, 3W |
+| SG11 | Speaker | 1 | 3W, 4Ω or 8Ω |
+
+**Stage B goal:** AI voice interaction, waveform display, audio feedback active.
 
 ### 4.3 Robot Platform
 
@@ -281,18 +296,68 @@ CYNEXIS OS is a full graphical interface running on the status glove's 3.5" touc
         │
         ├── [BTS7960] ──── 4× DC Motors (12V direct)
         │
-        ├── [LM2596 #1] ── 7.5V ── [PCA9685 V+] ── 4× DS3218 servos
+        ├── [LM2596 #1] ── 6.5V ── [PCA9685 V+] ── 4× DS3218 servos
+        │                   ↑
+        │          (NOT 7.5V — reduces heating, improves reliability)
         │
         └── [LM2596 #2] ── 5V ─── [ESP32 VIN]
                                 ├── [HC-SR04]
                                 └── [PCA9685 VCC]
 ```
 
+> **Servo voltage note:** DS3218 rated for 4.8V–8.4V. Running at 6.5V is the optimal point — high enough for torque, low enough to minimize heat and extend servo lifespan. Never exceed 7.5V under continuous load.
+
 ### Gloves (Single cell, 3.7V)
 
 ```
 18650 Cell → [TP4056] → ESP32 + sensors
 ```
+
+---
+
+## 10. CAMERA TRANSPORT PATH
+
+The vision pipeline is explicitly:
+
+```
+[Robot] ── USB cable ──► [Laptop USB port]
+                                │
+                          OpenCV (capture)
+                                │
+                    ┌───────────┴───────────┐
+                    │                       │
+               MediaPipe                  YOLO
+             (hand/pose)            (object detect)
+                    │                       │
+                DeepSORT              FastAPI server
+             (tracking)                     │
+                    └───────────┬───────────┘
+                                │
+                         WebSocket
+                                │
+                         Robot ESP32
+                         (commands)
+```
+
+> Camera is USB-connected directly to the laptop — **not Wi-Fi streamed**. This eliminates latency and compression artifacts. The laptop processes all vision and sends only command outputs to the robot over Wi-Fi.
+
+---
+
+## 11. THERMAL MANAGEMENT
+
+| Component | Risk | Mitigation |
+|-----------|------|------------|
+| BTS7960 | High heat under load (43A peak) | Heatsink mandatory + 30mm fan on chassis |
+| LM2596 #1 (6.5V) | Moderate heat (12V→6.5V, 5.5V drop × current) | Heatsink + airflow slot on chassis |
+| LM2596 #2 (5V) | Low-moderate heat | Heatsink |
+| DS3218 servos | Heat under stall load | Monitor via telemetry; add rest intervals in firmware |
+| ESP32 | Low — 250mW max | No heatsink needed |
+
+### Chassis Design Requirements
+- Minimum 2 vent holes on chassis sides (≥20mm diameter)
+- 30mm 5V brushless fan mounted over BTS7960
+- Airflow path: front intake → BTS7960 + LM2596 → rear exhaust
+- Future: servo temperature monitoring via NTC thermistor on PCA9685 aux channel
 
 ---
 
