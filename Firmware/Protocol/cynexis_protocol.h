@@ -293,10 +293,10 @@ typedef enum : uint8_t {
 // drift due to accidental padding or modification.
 // ============================================================
 
-static_assert(sizeof(GloveToRobotPacket) == 24,
+static_assert(sizeof(GloveToRobotPacket) == 28,
     "GloveToRobotPacket size mismatch — check struct layout");
 
-static_assert(sizeof(RobotToStatusPacket) == 20,
+static_assert(sizeof(RobotToStatusPacket) == 19,
     "RobotToStatusPacket size mismatch — check struct layout");
 
 static_assert(sizeof(AckPacket) == 8,

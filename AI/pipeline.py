@@ -43,6 +43,8 @@ from AI.Memory.provider import MemoryProvider
 from AI.Actions.registry import ActionRegistry
 from AI.personality import get_system_prompt
 from Backend.Robot.Safety.safety import SafetyValidator
+from AI.Router.models import RouteCategory, RoutingResult
+from AI.Router.router import IntelligenceRouter, intelligence_router
 
 log = get_logger("pipeline")
 
@@ -104,6 +106,7 @@ class VoicePipeline:
         actions: ActionRegistry,
         safety: SafetyValidator,
         microphone: Optional[MicrophoneInput] = None,
+        router: Optional[IntelligenceRouter] = None,
     ):
         self.stt = stt
         self.tts = tts
@@ -113,11 +116,12 @@ class VoicePipeline:
         self.actions = actions
         self.safety = safety
         self.microphone = microphone
+        self.router = router if router is not None else intelligence_router
         self.playback_queue = asyncio.Queue()
         self.playback_task = None
         self.current_tracker = None
         self._interrupted = False
-        log.info("VoicePipeline initialized with low-latency streaming and audio playback queue")
+        log.info("VoicePipeline initialized with low-latency streaming and Intelligence Router")
 
     def _ensure_playback_task(self):
         """Ensure the background playback worker task is running if an event loop is active."""
@@ -618,10 +622,20 @@ class VoicePipeline:
             self._fill_latencies(result, speech_end_ts, time.time(), None, None, None, None, 0.0, t_start)
             return result
 
-        # Step 2: Intent classification
+        # Step 2: Routing / Intent classification
         intent_complete_ts = time.time()
-        action_name = self.intent.classify(text)
         tracker["intent_complete"] = intent_complete_ts
+
+        # Route query through IntelligenceRouter
+        route_info: Optional[RoutingResult] = None
+        if self.router and getattr(settings, "router_enabled", True):
+            route_info = await self.router.route_and_resolve(text)
+            result["route"] = route_info.route.value
+            result["route_confidence"] = route_info.confidence
+            result["route_reason"] = route_info.reason
+        else:
+            action_temp = self.intent.classify(text)
+            result["route"] = RouteCategory.ROBOT_COMMAND.value if action_temp else RouteCategory.LOCAL.value
 
         # Check for dangerous/invalid command keywords (Safety Bypass)
         blocked_keywords = {"hack_motors", "hack"}
@@ -635,7 +649,7 @@ class VoicePipeline:
             self._fill_latencies(result, speech_end_ts, stt_complete_ts, intent_complete_ts, response_ready_ts, None, None, 0.0, t_start)
             return result
 
-        # LLM Start
+        # LLM / Tool Start
         llm_start_ts = time.time()
         tracker["llm_start"] = llm_start_ts
         tracker["llm_start_resources"] = capture_resources()
@@ -645,6 +659,8 @@ class VoicePipeline:
         playback_started_ts = None
         total_tts_time = 0.0
         wav_chunks = []
+
+        action_name = self.intent.classify(text) if (route_info is None or route_info.route == RouteCategory.ROBOT_COMMAND) else None
 
         if action_name:
             # ROBOT COMMAND PATH (Bypasses LLM entirely)
@@ -680,19 +696,61 @@ class VoicePipeline:
                     tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
                     playback_started_ts = result["latencies"]["playback_started"]
 
+        elif route_info and route_info.direct_response:
+            # DETERMINISTIC TOOL PATH (Instant response via Time, Date, Calc, Status, Project Knowledge, or Offline Fallback)
+            response_ready_ts = time.time()
+            result["response"] = route_info.direct_response
+            await self.memory.add_conversation("assistant", result["response"])
+            robot_state.voice.last_response = result["response"]
+
+            wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+            )
+            if result["latencies"].get("tts_first_audio_ready"):
+                tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
+                playback_started_ts = result["latencies"]["playback_started"]
+
+        elif route_info and route_info.route == RouteCategory.VISION:
+            # VISION PATH (Moondream2 scene description)
+            try:
+                action_res = await self.actions.execute(ActionName.DESCRIBE_SCENE.value)
+                result["action_result"] = action_res
+                data = action_res.get("data", {})
+                result["response"] = data.get("speech", data.get("description", "I see the environment."))
+            except Exception as e:
+                result["error"] = str(e)
+                result["response"] = f"Vision error: {e}"
+            response_ready_ts = time.time()
+            await self.memory.add_conversation("assistant", result["response"])
+            robot_state.voice.last_response = result["response"]
+
+            wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+            )
+            if result["latencies"].get("tts_first_audio_ready"):
+                tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
+                playback_started_ts = result["latencies"]["playback_started"]
+
         else:
-            # CONVERSATION PATH (LLM Streaming + sentence synthesis)
+            # CONVERSATION PATH (LLM Streaming + sentence synthesis, with optional live retrieved context)
             robot_state.voice.state = "THINKING"
             try:
                 history = await self.memory.get_conversation_history(limit=5)
                 system_prompt = get_system_prompt()
-                context = f"System: {system_prompt}\n" + "\n".join(
-                    f"{m['role']}: {m['content']}" for m in history
-                )
+                augmented = route_info.augmented_context if route_info else None
+                if augmented:
+                    context = f"System: {system_prompt}\n{augmented}\n" + "\n".join(
+                        f"{m['role']}: {m['content']}" for m in history
+                    )
+                else:
+                    context = f"System: {system_prompt}\n" + "\n".join(
+                        f"{m['role']}: {m['content']}" for m in history
+                    )
 
                 tracker["llm_start"] = time.time()
                 tracker["llm_start_resources"] = capture_resources()
-                token_stream = self.llm.stream(text, context=context)
+                stream_prompt = text if not augmented else f"{text}\n(State the actual news stories or key facts directly in 1-2 spoken sentences.)"
+                token_stream = self.llm.stream(stream_prompt, context=context)
                 sentence_stream = self._sentence_chunker(token_stream, tracker)
                 full_response = ""
                 is_first = True
@@ -852,12 +910,22 @@ class VoicePipeline:
         robot_state.voice.last_utterance = text
         await self.memory.add_conversation("user", text)
 
-        # Intent classification
-        action_name = self.intent.classify(text)
+        # Routing / Intent classification
         intent_complete_ts = time.time()
         tracker["intent_complete"] = intent_complete_ts
 
-        # LLM Start
+        # Route query through IntelligenceRouter
+        route_info: Optional[RoutingResult] = None
+        if self.router and getattr(settings, "router_enabled", True):
+            route_info = await self.router.route_and_resolve(text)
+            result["route"] = route_info.route.value
+            result["route_confidence"] = route_info.confidence
+            result["route_reason"] = route_info.reason
+        else:
+            action_temp = self.intent.classify(text)
+            result["route"] = RouteCategory.ROBOT_COMMAND.value if action_temp else RouteCategory.LOCAL.value
+
+        # LLM / Tool Start
         llm_start_ts = time.time()
         tracker["llm_start"] = llm_start_ts
         tracker["llm_start_resources"] = capture_resources()
@@ -867,6 +935,8 @@ class VoicePipeline:
         playback_started_ts = None
         total_tts_time = 0.0
         wav_chunks = []
+
+        action_name = self.intent.classify(text) if (route_info is None or route_info.route == RouteCategory.ROBOT_COMMAND) else None
 
         if action_name:
             # ROBOT COMMAND PATH (Bypasses LLM entirely)
@@ -901,19 +971,61 @@ class VoicePipeline:
                     tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
                     playback_started_ts = result["latencies"]["playback_started"]
 
+        elif route_info and route_info.direct_response:
+            # DETERMINISTIC TOOL PATH (Instant response via Time, Date, Calc, Status, Project Knowledge, or Offline Fallback)
+            response_ready_ts = time.time()
+            result["response"] = route_info.direct_response
+            await self.memory.add_conversation("assistant", result["response"])
+            robot_state.voice.last_response = result["response"]
+
+            wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+            )
+            if result["latencies"].get("tts_first_audio_ready"):
+                tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
+                playback_started_ts = result["latencies"]["playback_started"]
+
+        elif route_info and route_info.route == RouteCategory.VISION:
+            # VISION PATH (Moondream2 scene description)
+            try:
+                action_res = await self.actions.execute(ActionName.DESCRIBE_SCENE.value)
+                result["action_result"] = action_res
+                data = action_res.get("data", {})
+                result["response"] = data.get("speech", data.get("description", "I see the environment."))
+            except Exception as e:
+                result["error"] = str(e)
+                result["response"] = f"Vision error: {e}"
+            response_ready_ts = time.time()
+            await self.memory.add_conversation("assistant", result["response"])
+            robot_state.voice.last_response = result["response"]
+
+            wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+            )
+            if result["latencies"].get("tts_first_audio_ready"):
+                tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
+                playback_started_ts = result["latencies"]["playback_started"]
+
         else:
-            # CONVERSATION PATH (LLM Streaming + sentence synthesis)
+            # CONVERSATION PATH (LLM Streaming + sentence synthesis, with optional live retrieved context)
             robot_state.voice.state = "THINKING"
             try:
                 history = await self.memory.get_conversation_history(limit=5)
                 system_prompt = get_system_prompt()
-                context = f"System: {system_prompt}\n" + "\n".join(
-                    f"{m['role']}: {m['content']}" for m in history
-                )
+                augmented = route_info.augmented_context if route_info else None
+                if augmented:
+                    context = f"System: {system_prompt}\n{augmented}\n" + "\n".join(
+                        f"{m['role']}: {m['content']}" for m in history
+                    )
+                else:
+                    context = f"System: {system_prompt}\n" + "\n".join(
+                        f"{m['role']}: {m['content']}" for m in history
+                    )
 
                 tracker["llm_start"] = time.time()
                 tracker["llm_start_resources"] = capture_resources()
-                token_stream = self.llm.stream(text, context=context)
+                stream_prompt = text if not augmented else f"{text}\n(State the actual news stories or key facts directly in 1-2 spoken sentences.)"
+                token_stream = self.llm.stream(stream_prompt, context=context)
                 sentence_stream = self._sentence_chunker(token_stream, tracker)
                 full_response = ""
                 is_first = True

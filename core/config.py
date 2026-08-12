@@ -53,6 +53,12 @@ class CynexisSettings(BaseSettings):
     command_timeout_s: float = Field(default=2.0)
     max_retries: int = Field(default=3)
 
+    # Glove / Hand Data Receiver (Read-Only Telemetry)
+    glove_receiver_enabled: bool = Field(default=True)
+    glove_receiver_port: str = Field(default="")          # e.g. COM8
+    glove_receiver_baud: int = Field(default=115200)
+    glove_receiver_reconnect_interval_s: float = Field(default=2.0)
+
     # TTS (Text-to-Speech)
     tts_provider: str = Field(default="kokoro")
     tts_voice: str = Field(default="am_michael")
@@ -65,6 +71,10 @@ class CynexisSettings(BaseSettings):
 
     # STT (Speech-to-Text)
     stt_provider: str = Field(default="mock")
+    stt_audio_input_source: str = Field(default="local")   # "local" | "network" | "mock"
+    udp_audio_host: str = Field(default="0.0.0.0")
+    udp_audio_port: int = Field(default=50005)
+    udp_audio_buffer_seconds: float = Field(default=10.0)
     stt_whisper_model: str = Field(default="base.en")
     stt_whisper_device: str = Field(default="cpu")
     stt_whisper_compute_type: str = Field(default="float32")
@@ -94,6 +104,14 @@ class CynexisSettings(BaseSettings):
     ollama_context_window: int = Field(default=8)       # conversation turns to include
     ollama_num_thread: int = Field(default=6)
     ollama_num_ctx: int = Field(default=1024)
+
+    # Intelligence Router & Live Information
+    router_enabled: bool = Field(default=True)
+    web_search_enabled: bool = Field(default=True)
+    web_search_timeout_s: float = Field(default=6.0)
+    web_search_max_results: int = Field(default=3)
+    web_cache_ttl_s: int = Field(default=900)  # 15 minutes
+    web_min_request_interval_s: float = Field(default=1.0)  # Throttling between web queries
 
     model_config = {
         "env_file": str(PROJECT_ROOT / ".env"),

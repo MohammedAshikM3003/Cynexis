@@ -54,8 +54,10 @@ class SafetyLevel(str, Enum):
 class GestureType(str, Enum):
     """Recognized hand gestures."""
     OPEN = "OPEN"
+    CLOSED = "CLOSED"
     FIST = "FIST"
     POINT = "POINT"
+    THUMB_UP = "THUMB_UP"
     PARTIAL = "PARTIAL"
     UNKNOWN = "UNKNOWN"
 

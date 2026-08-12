@@ -45,6 +45,12 @@ async def get_sensors():
     return robot_state.sensors.model_dump()
 
 
+@router.get("/hand")
+async def get_hand():
+    """Hand gesture telemetry and bend state."""
+    return robot_state.hand.model_dump()
+
+
 @router.post("/capture")
 async def capture_photo(request: Request):
     """POST /api/capture photo endpoint."""

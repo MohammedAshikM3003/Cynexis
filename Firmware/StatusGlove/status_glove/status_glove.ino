@@ -32,10 +32,12 @@
 // ============================================================
 
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <esp_now.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <driver/i2s.h>
 
 #include "../../Protocol/cynexis_protocol.h"
 #include "../../Protocol/cynexis_mac.h"
@@ -52,13 +54,53 @@
 Adafruit_SSD1306 oled(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 
 // ============================================================
-// PIN DEFINITIONS
+// PIN DEFINITIONS (LEFT-HAND INTERFACE GLOVE)
 // ============================================================
 
-#define PIN_VIBRATION  26
-#define PIN_BUZZER     27   // Optional — set to -1 if not installed
-#define PIN_BATT       36
-#define PIN_LED        2
+// Feedback & Alerts
+#define PIN_VIBRATION    26
+#define PIN_BUZZER       27   // Optional — set to -1 if not installed
+#define PIN_BATT         36
+#define PIN_LED          2
+
+// INMP441 I2S MEMS Microphone Pins
+#define PIN_I2S_SCK      14   // BCLK (Bit Clock)
+#define PIN_I2S_WS       15   // LRCLK (Word Select)
+#define PIN_I2S_SD       13   // DOUT (Serial Data Input to ESP32)
+#define I2S_MIC_PORT     I2S_NUM_0
+
+// Note: Future 2.8" Capacitive Touch Display Pins (Reserved):
+// SPI TFT: MOSI=23, SCK=18, CS=5, DC=4, RST=32, Backlight=33
+// I2C Touch: SDA=21, SCL=22, Touch INT=27
+
+// ============================================================
+// NETWORK AUDIO CONFIGURATION
+// ============================================================
+
+#ifndef WIFI_SSID
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#endif
+
+#ifndef WIFI_PASS
+#define WIFI_PASS "YOUR_WIFI_PASS"
+#endif
+
+#ifndef PC_IP_ADDR
+#define PC_IP_ADDR "192.168.1.100"  // Set to CYNEXIS PC IP
+#endif
+
+#define UDP_AUDIO_PORT       50005
+#define AUDIO_SAMPLE_RATE    16000
+#define AUDIO_FRAME_SAMPLES  256    // 256 samples * 2 bytes = 512 bytes payload (16ms)
+#define AUDIO_PAYLOAD_BYTES  (AUDIO_FRAME_SAMPLES * 2)
+
+// Packed 8-byte UDP Audio Header
+struct __attribute__((packed)) AudioPacketHeader {
+    char magic[2];          // 'C', 'Y' (0x43, 0x59)
+    uint16_t sequence;      // 0 - 65535 monotonic
+    uint16_t sample_rate;   // 16000
+    uint16_t payload_len;   // 512
+};
 
 // ============================================================
 // CONFIGURATION
@@ -113,11 +155,10 @@ const char* ERR_NAMES[] = {
     "UNKNOWN"    // 0xFF -> index 10
 };
 
-// ============================================================
-// FORWARD DECLARATIONS
-// ============================================================
-
+// Forward declarations
 void init_espnow();
+void init_i2s_microphone();
+void audio_stream_task(void* param);
 void draw_display();
 void draw_status_bar();
 void draw_telemetry();
@@ -126,11 +167,20 @@ void vibrate(int duration_ms);
 void beep(int freq, int duration_ms);
 float read_battery_voltage();
 uint8_t voltage_to_percent(float v);
+
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+void on_data_recv(const esp_now_recv_info_t* recv_info, const uint8_t* data, int len);
+void on_data_sent(const wifi_tx_info_t* info, esp_now_send_status_t status);
+#else
 void on_data_recv(const uint8_t* mac, const uint8_t* data, int len);
 void on_data_sent(const uint8_t* mac, esp_now_send_status_t status);
+#endif
+
 void blink(int n, int ms);
 const char* get_state_name(uint8_t state_id);
 const char* get_error_name(uint8_t err);
+
+WiFiUDP audio_udp;
 
 // ============================================================
 // SETUP
@@ -144,8 +194,12 @@ void setup() {
     pinMode(PIN_VIBRATION, OUTPUT);
 
     #if PIN_BUZZER >= 0
+    #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    ledcAttach(PIN_BUZZER, 2000, 8);
+    #else
     ledcSetup(0, 2000, 8);
     ledcAttachPin(PIN_BUZZER, 0);
+    #endif
     #endif
 
     blink(3, 200);
@@ -174,6 +228,20 @@ void setup() {
     // --------------------------------------------------------
     analogReadResolution(12);
     analogSetAttenuation(ADC_11db);
+
+    // --------------------------------------------------------
+    // INMP441 I2S MICROPHONE & AUDIO TASK
+    // --------------------------------------------------------
+    init_i2s_microphone();
+    xTaskCreatePinnedToCore(
+        audio_stream_task,
+        "audio_stream_task",
+        4096,
+        NULL,
+        5,
+        NULL,
+        0  // Pinned to Core 0 to leave Core 1 for main loop and display
+    );
 
     // --------------------------------------------------------
     // ESP-NOW
@@ -329,9 +397,15 @@ void vibrate(int duration_ms) {
 
 void beep(int freq_hz, int duration_ms) {
     #if PIN_BUZZER >= 0
+    #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    ledcWriteTone(PIN_BUZZER, freq_hz);
+    delay(duration_ms);
+    ledcWriteTone(PIN_BUZZER, 0);
+    #else
     ledcWriteTone(0, freq_hz);
     delay(duration_ms);
     ledcWriteTone(0, 0);
+    #endif
     #endif
 }
 
@@ -354,7 +428,11 @@ void init_espnow() {
     Serial.println("[ESP-NOW] Status Glove listening.");
 }
 
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+void on_data_recv(const esp_now_recv_info_t* recv_info, const uint8_t* data, int len) {
+#else
 void on_data_recv(const uint8_t* mac, const uint8_t* data, int len) {
+#endif
     if (len != sizeof(RobotToStatusPacket)) return;
 
     const RobotToStatusPacket* pkt = (const RobotToStatusPacket*)data;
@@ -380,9 +458,15 @@ void on_data_recv(const uint8_t* mac, const uint8_t* data, int len) {
     }
 }
 
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+void on_data_sent(const wifi_tx_info_t* info, esp_now_send_status_t status) {
+    // Status glove only receives — no sends expected
+}
+#else
 void on_data_sent(const uint8_t* mac, esp_now_send_status_t status) {
     // Status glove only receives — no sends expected
 }
+#endif
 
 // ============================================================
 // BATTERY
@@ -423,6 +507,89 @@ void blink(int n, int ms) {
     for (int i = 0; i < n; i++) {
         digitalWrite(PIN_LED, HIGH); delay(ms / 2);
         digitalWrite(PIN_LED, LOW);  delay(ms / 2);
+    }
+}
+
+// ============================================================
+// INMP441 I2S & UDP AUDIO STREAMING
+// ============================================================
+
+void init_i2s_microphone() {
+    i2s_config_t i2s_config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+        .sample_rate = AUDIO_SAMPLE_RATE,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+        .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_STAND_I2S),
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 4,
+        .dma_buf_len = AUDIO_FRAME_SAMPLES,
+        .use_apll = false,
+        .tx_desc_auto_clear = false,
+        .fixed_mclk = 0
+    };
+
+    i2s_pin_config_t pin_config = {
+        .bck_io_num = PIN_I2S_SCK,
+        .ws_io_num = PIN_I2S_WS,
+        .data_out_num = I2S_PIN_NO_CHANGE,
+        .data_in_num = PIN_I2S_SD
+    };
+
+    esp_err_t err = i2s_driver_install(I2S_MIC_PORT, &i2s_config, 0, NULL);
+    if (err != ESP_OK) {
+        Serial.printf("[ERROR] Failed to install I2S driver: %d\n", err);
+        return;
+    }
+
+    err = i2s_set_pin(I2S_MIC_PORT, &pin_config);
+    if (err != ESP_OK) {
+        Serial.printf("[ERROR] Failed to set I2S pins: %d\n", err);
+        return;
+    }
+
+    Serial.println("[OK] INMP441 I2S microphone initialized.");
+}
+
+void audio_stream_task(void* param) {
+    uint16_t seq = 0;
+    int32_t i2s_raw_buf[AUDIO_FRAME_SAMPLES];
+    int16_t pcm_16_buf[AUDIO_FRAME_SAMPLES];
+    uint8_t packet_buffer[sizeof(AudioPacketHeader) + AUDIO_PAYLOAD_BYTES];
+
+    AudioPacketHeader* header = (AudioPacketHeader*)packet_buffer;
+    header->magic[0] = 'C';
+    header->magic[1] = 'Y';
+    header->sample_rate = AUDIO_SAMPLE_RATE;
+    header->payload_len = AUDIO_PAYLOAD_BYTES;
+
+    while (true) {
+        size_t bytes_read = 0;
+        esp_err_t res = i2s_read(
+            I2S_MIC_PORT,
+            (void*)i2s_raw_buf,
+            sizeof(i2s_raw_buf),
+            &bytes_read,
+            portMAX_DELAY
+        );
+
+        if (res == ESP_OK && bytes_read > 0) {
+            int samples_read = bytes_read / sizeof(int32_t);
+            for (int i = 0; i < samples_read; i++) {
+                // INMP441 delivers 24-bit audio in 32-bit slot, shift down 14 bits to scale to signed 16-bit PCM
+                pcm_16_buf[i] = (int16_t)(i2s_raw_buf[i] >> 14);
+            }
+
+            if (WiFi.status() == WL_CONNECTED) {
+                header->sequence = seq++;
+                memcpy(packet_buffer + sizeof(AudioPacketHeader), pcm_16_buf, samples_read * sizeof(int16_t));
+
+                audio_udp.beginPacket(PC_IP_ADDR, UDP_AUDIO_PORT);
+                audio_udp.write(packet_buffer, sizeof(AudioPacketHeader) + (samples_read * sizeof(int16_t)));
+                audio_udp.endPacket();
+            }
+        }
+        taskYIELD();
     }
 }
 

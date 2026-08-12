@@ -46,6 +46,8 @@ async def telemetry_endpoint(websocket: WebSocket):
                     "is_moving": robot_state.arm.is_moving,
                 },
                 "gripper": robot_state.gripper.model_dump(),
+                "sensors": robot_state.sensors.model_dump(),
+                "hand": robot_state.hand.model_dump(),
                 "camera": {
                     "active": robot_state.camera.is_active,
                     "recording": robot_state.camera.is_recording,

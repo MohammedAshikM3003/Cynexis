@@ -56,6 +56,17 @@ class CameraState(BaseModel):
     photos_taken: int = Field(default=0)
 
 
+class HandState(BaseModel):
+    """Hand gesture and position state."""
+    gesture: str = Field(default="UNKNOWN")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    thumb_bend_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    index_bend_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    is_stable: bool = Field(default=False)
+    stable_count: int = Field(default=0)
+    last_updated: Optional[datetime] = Field(default=None)
+
+
 class SensorState(BaseModel):
     """Sensor readings snapshot."""
     distance_cm: float = Field(default=0.0)  # HC-SR04
@@ -63,6 +74,8 @@ class SensorState(BaseModel):
     pitch: float = Field(default=0.0)        # MPU6050
     flex_thumb: int = Field(default=0)
     flex_index: int = Field(default=0)
+    flex_thumb_bend_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    flex_index_bend_pct: float = Field(default=0.0, ge=0.0, le=100.0)
     flex_middle: int = Field(default=0)
     flex_ring: int = Field(default=0)
     flex_pinky: int = Field(default=0)
@@ -133,6 +146,7 @@ class RobotState(BaseModel):
     gripper: GripperState = Field(default_factory=GripperState)
     camera: CameraState = Field(default_factory=CameraState)
     sensors: SensorState = Field(default_factory=SensorState)
+    hand: HandState = Field(default_factory=HandState)
     voice: VoiceState = Field(default_factory=VoiceState)
     ai: AIState = Field(default_factory=AIState)
     network: NetworkState = Field(default_factory=NetworkState)

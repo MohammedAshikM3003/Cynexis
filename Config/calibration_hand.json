@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-12T12:23:23.799311+00:00",
+  "thumb": {
+    "finger": "thumb",
+    "straight_raw": 86.0,
+    "bent_raw": 510.5,
+    "direction": "INCREASING",
+    "min_delta": 20.0,
+    "straight_stats": {
+      "min": 0.0,
+      "max": 137.0,
+      "mean": 82.7,
+      "median": 86.0,
+      "std_dev": 21.88,
+      "samples": 100
+    },
+    "bent_stats": {
+      "min": 358.0,
+      "max": 656.0,
+      "mean": 532.5,
+      "median": 510.5,
+      "std_dev": 62.53,
+      "samples": 100
+    },
+    "calibrated_at": "2026-08-12T12:23:23.798560+00:00"
+  },
+  "index": {
+    "finger": "index",
+    "straight_raw": 205.0,
+    "bent_raw": 531.0,
+    "direction": "INCREASING",
+    "min_delta": 20.0,
+    "straight_stats": {
+      "min": 199.0,
+      "max": 209.0,
+      "mean": 204.9,
+      "median": 205.0,
+      "std_dev": 1.71,
+      "samples": 100
+    },
+    "bent_stats": {
+      "min": 190.0,
+      "max": 859.0,
+      "mean": 577.0,
+      "median": 531.0,
+      "std_dev": 248.8,
+      "samples": 100
+    },
+    "calibrated_at": "2026-08-12T12:23:23.799311+00:00"
+  }
+}

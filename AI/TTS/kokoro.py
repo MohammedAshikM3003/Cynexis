@@ -9,6 +9,7 @@ Backend priority:
 
 import io
 import os
+import re
 import time
 import asyncio
 from pathlib import Path
@@ -219,12 +220,98 @@ class KokoroTTSProvider(TTSProvider):
 
         return resolved_voice, resolved_speed
 
+    @staticmethod
+    def verbalize_numbers_and_symbols(text: str) -> str:
+        """
+        Normalize numbers and math symbols into natural, spoken English words
+        for crystal-clear Kokoro neural TTS pronunciation.
+        Examples:
+          '13,350,000' -> 'thirteen million three hundred fifty thousand'
+          '32,300' -> 'thirty-two thousand three hundred'
+          '1500 * 8900 = 13,350,000' -> 'one thousand five hundred times eight thousand nine hundred equals thirteen million three hundred fifty thousand'
+        """
+        if not text:
+            return ""
+
+        units = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+                 "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+                 "seventeen", "eighteen", "nineteen"]
+        tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+
+        def int_to_words(n: int) -> str:
+            if n == 0:
+                return "zero"
+            if n < 0:
+                return f"minus {int_to_words(abs(n))}"
+
+            parts = []
+            if n >= 1_000_000_000_000:
+                parts.append(f"{int_to_words(n // 1_000_000_000_000)} trillion")
+                n %= 1_000_000_000_000
+            if n >= 1_000_000_000:
+                parts.append(f"{int_to_words(n // 1_000_000_000)} billion")
+                n %= 1_000_000_000
+            if n >= 1_000_000:
+                parts.append(f"{int_to_words(n // 1_000_000)} million")
+                n %= 1_000_000
+            if n >= 1_000:
+                parts.append(f"{int_to_words(n // 1_000)} thousand")
+                n %= 1_000
+            if n >= 100:
+                parts.append(f"{units[n // 100]} hundred")
+                n %= 100
+            if n >= 20:
+                t = tens[n // 10]
+                u = units[n % 10]
+                parts.append(f"{t}-{u}" if u else t)
+            elif n > 0:
+                parts.append(units[n])
+
+            return " ".join(parts)
+
+        # 1. Replace math symbols with spoken words
+        s = text
+        s = re.sub(r"\s*[\*×]\s*", " times ", s)
+        s = re.sub(r"\s*=\s*", " equals ", s)
+        s = re.sub(r"(\d+)\s*\/\s*(\d+)", r"\1 divided by \2", s)
+        s = re.sub(r"\s*\+\s*", " plus ", s)
+        s = re.sub(r"(\d+)\s*%", r"\1 percent", s)
+
+        # 2. Convert comma-separated numbers and standalone integers
+        def replace_num_match(m):
+            raw = m.group(0).replace(",", "")
+            # Preserve time formats like 3:11
+            if ":" in raw:
+                return m.group(0)
+            # Handle decimals
+            if "." in raw:
+                int_part, dec_part = raw.split(".", 1)
+                int_words = int_to_words(int(int_part)) if int_part else "zero"
+                dec_words = " ".join(units[int(d)] if d.isdigit() and int(d) < 10 else d for d in dec_part)
+                return f"{int_words} point {dec_words}"
+            try:
+                val = int(raw)
+                # Keep 4-digit years like 2026 as is (Kokoro pronounces years well) unless in math context
+                if 1900 <= val <= 2099 and len(raw) == 4 and "year" in text.lower():
+                    return m.group(0)
+                return int_to_words(val)
+            except Exception:
+                return m.group(0)
+
+        # Match numbers with commas (e.g. 13,350,000 or 26,910) or standalone multi-digit numbers
+        s = re.sub(r"\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d+(?:\.\d+)?\b", replace_num_match, s)
+
+        # Normalize extra spaces
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
     def _generate_wav_sync(self, text: str, voice: str, speed: float) -> bytes:
         """Synchronous synthesis — dispatches to ONNX or PyTorch backend."""
+        spoken_text = self.verbalize_numbers_and_symbols(text)
         if self._backend == "onnx" and self._onnx_model is not None:
-            return self._generate_wav_onnx(text, voice, speed)
+            return self._generate_wav_onnx(spoken_text, voice, speed)
         else:
-            return self._generate_wav_pytorch(text, voice, speed)
+            return self._generate_wav_pytorch(spoken_text, voice, speed)
 
     def _generate_wav_onnx(self, text: str, voice: str, speed: float) -> bytes:
         """ONNX synthesis — ~1.5x faster on CPU for short chunks."""

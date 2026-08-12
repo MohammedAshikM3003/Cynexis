@@ -127,6 +127,7 @@ class WhisperSTTProvider(STTProvider):
             t_whisper_start = time.time()
 
             def _run_transcription():
+                import re
                 segments, info = self._model.transcribe(
                     audio_array,
                     beam_size=self.beam_size,
@@ -134,10 +135,21 @@ class WhisperSTTProvider(STTProvider):
                     condition_on_previous_text=False,
                     without_timestamps=True,
                     temperature=0.0,
+                    initial_prompt="CYNEXIS is an AI-powered robotics platform with ESP32.",
                 )
                 # Force generator execution in this thread
                 text_segments = [seg.text for seg in segments]
-                return "".join(text_segments).strip()
+                raw_text = "".join(text_segments).strip()
+                
+                # Phonetic correction for CYNEXIS brand name
+                phonetic_patterns = [
+                    (r"\b(using syntaxes|the using syntaxes)\b", "CYNEXIS"),
+                    (r"\b(syntaxes|synexis|sinexis|synecsis|sin axis|cynaxis|cinaxis|sin access|syn access)\b", "CYNEXIS"),
+                ]
+                cleaned = raw_text
+                for pat, repl in phonetic_patterns:
+                    cleaned = re.sub(pat, repl, cleaned, flags=re.IGNORECASE)
+                return cleaned
 
             transcript = await asyncio.to_thread(_run_transcription)
             t_whisper_complete = time.time()

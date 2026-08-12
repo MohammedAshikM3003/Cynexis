@@ -255,12 +255,26 @@ async def lifespan(app: FastAPI):
         robot_state.connection = ConnectionState.CONNECTED
         robot_state.mode = SystemMode.NORMAL
 
+    # Start Glove Receiver Bridge (Read-Only Telemetry)
+    if settings.glove_receiver_enabled and settings.glove_receiver_port:
+        from Backend.serial_bridge.glove_receiver import GloveReceiverBridge
+        glove_bridge = GloveReceiverBridge(
+            port=settings.glove_receiver_port,
+            baud_rate=settings.glove_receiver_baud,
+            reconnect_interval=settings.glove_receiver_reconnect_interval_s,
+            enabled=settings.glove_receiver_enabled,
+        )
+        app.state.glove_bridge = glove_bridge
+        await glove_bridge.start()
+
     log.info(f"CYNEXIS v{CYNEXIS_VERSION} ready on {settings.api_host}:{settings.api_port}")
 
     yield
 
     # SHUTDOWN
     log.info("CYNEXIS shutting down...")
+    if hasattr(app.state, "glove_bridge"):
+        await app.state.glove_bridge.stop()
     if hasattr(app.state, "bridge"):
         await app.state.bridge.stop()
     if hasattr(app.state, "camera"):
@@ -310,4 +324,11 @@ async def serve_voice_lab():
         with open(lab_file, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse("<h2>Voice Laboratory interface not found</h2>", status_code=404)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Favicon placeholder to prevent browser console 404."""
+    from fastapi.responses import Response
+    return Response(status_code=204)
 

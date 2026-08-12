@@ -255,34 +255,45 @@ class OllamaLLMProvider(LLMProvider):
         Build the Ollama chat message list.
 
         context is the pre-formatted string produced by pipeline.py:
-            "System: <system_prompt>\\nuser: <msg>\\nassistant: <msg>\\n..."
-        We parse it into proper role/content dicts.
+            "System: <system_prompt>\n<augmented_context>\nuser: <msg>\nassistant: <msg>\n..."
+        We parse it into proper role/content dicts, preserving system context and augmented references.
         """
         from AI.personality import get_system_prompt
 
         messages: list[dict] = []
+        system_parts = [get_system_prompt()]
+        conversation_history: list[dict] = []
 
-        # Always prepend the system prompt
-        messages.append({"role": "system", "content": get_system_prompt()})
-
-        # Parse any conversation history from context
+        # Parse conversation history and any augmented context
         if context:
             lines = context.strip().splitlines()
+            non_role_lines = []
             for line in lines:
-                line = line.strip()
-                if not line or line.startswith("System:"):
-                    continue  # skip system re-injection; already added above
-                if line.startswith("user:"):
-                    messages.append(
-                        {"role": "user", "content": line[len("user:"):].strip()}
+                stripped = line.strip()
+                if not stripped or stripped.startswith("System:"):
+                    continue
+                if stripped.startswith("user:"):
+                    conversation_history.append(
+                        {"role": "user", "content": stripped[len("user:"):].strip()}
                     )
-                elif line.startswith("assistant:"):
-                    messages.append(
+                elif stripped.startswith("assistant:"):
+                    conversation_history.append(
                         {
                             "role": "assistant",
-                            "content": line[len("assistant:"):].strip(),
+                            "content": stripped[len("assistant:"):].strip(),
                         }
                     )
+                else:
+                    non_role_lines.append(line)
+
+            if non_role_lines:
+                extra_ctx = "\n".join(non_role_lines).strip()
+                if extra_ctx:
+                    system_parts.append(extra_ctx)
+
+        # Prepend complete system prompt (including any augmented context)
+        messages.append({"role": "system", "content": "\n\n".join(system_parts)})
+        messages.extend(conversation_history)
 
         # Append the current user turn
         messages.append({"role": "user", "content": prompt})
