@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CYNEXIS — Voice Pipeline Laboratory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(18, 24, 38, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-border-hover: rgba(56, 189, 248, 0.3);
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.25);
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.25);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #0b0f19 70%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 32px 20px;
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo-badge {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+
+    .brand-title h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+    }
+
+    .brand-title p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success-glow);
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 900px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+      transition: border-color 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--card-border-hover);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .card-header h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .voice-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 16px;
+      border-radius: 14px;
+      border: 1px solid var(--card-border);
+    }
+
+    .control-group label {
+      display: block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(11, 15, 25, 0.8);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    select:focus, input[type="text"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+
+    .speed-slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: var(--primary);
+    }
+
+    .speed-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      min-width: 38px;
+      color: var(--primary);
+    }
+
+    .mic-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 0 16px;
+    }
+
+    .mic-btn {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 2px solid var(--primary);
+      color: var(--primary);
+      font-size: 40px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 30px rgba(56, 189, 248, 0.2);
+    }
+
+    .mic-btn:hover {
+      transform: scale(1.06);
+      box-shadow: 0 0 40px rgba(56, 189, 248, 0.4);
+    }
+
+    .mic-btn.listening {
+      background: linear-gradient(135deg, #b91c1c, #7f1d1d);
+      border-color: var(--danger);
+      color: #ffffff;
+      animation: pulse 1.2s infinite;
+      box-shadow: 0 0 40px var(--danger-glow);
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+
+    .mic-hint {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: 10px;
+      border: none;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #0b0f19;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 0 20px var(--primary-glow);
+      transform: translateY(-1px);
+    }
+
+    .presets-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin: 20px 0 10px;
+      font-weight: 600;
+    }
+
+    .preset-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .preset-chip {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .preset-chip:hover {
+      background: rgba(56, 189, 248, 0.1);
+      border-color: var(--primary);
+      color: var(--text);
+    }
+
+    /* Pipeline Timeline */
+    .pipeline-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 14px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      transition: all 0.2s ease;
+    }
+
+    .step-item.active {
+      border-color: var(--primary);
+      background: rgba(56, 189, 248, 0.04);
+    }
+
+    .step-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .step-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .step-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--primary);
+    }
+
+    .step-value {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .audio-player-wrap {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--card-border);
+    }
+
+    audio {
+      width: 100%;
+      height: 36px;
+      border-radius: 8px;
+    }
+
+    .options-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .options-row input[type="checkbox"] {
+      accent-color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo-badge">C</div>
+        <div class="brand-title">
+          <h1>CYNEXIS VOICE LAB</h1>
+          <p>Local Kokoro TTS & Robotic Voice Pipeline Test Environment</p>
+        </div>
+      </div>
+      <div class="status-badge">
+        <div class="status-indicator" id="statusIndicator"></div>
+        <span id="statusText">Connecting to backend...</span>
+      </div>
+    </header>
+
+    <div class="main-grid">
+      <!-- Left Panel: Controls & Input -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Voice & Synthesis Controls</h2>
+        </div>
+
+        <div class="voice-controls">
+          <div class="control-group">
+            <label for="voiceSelect">Selected Kokoro Voice</label>
+            <select id="voiceSelect">
+              <option value="am_michael">Michael (am_michael - en-US Male)</option>
+              <option value="af_bella">Bella (af_bella - en-US Female)</option>
+              <option value="bm_lewis">Lewis (bm_lewis - en-GB Male)</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label for="speedSlider">Speech Speed</label>
+            <div class="speed-slider-wrap">
+              <input type="range" id="speedSlider" min="0.5" max="2.0" step="0.1" value="1.0">
+              <span class="speed-val" id="speedVal">1.0x</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mic-container">
+          <button class="mic-btn" id="micBtn" title="Click to speak">🎤</button>
+          <p class="mic-hint" id="micHint">Click microphone to speak or type below</p>
+        </div>
+
+        <div class="input-row">
+          <input type="text" id="textInput" placeholder="Type text to synthesize or robot command..." autocomplete="off">
+          <button class="btn btn-primary" id="sendBtn">Send</button>
+          <button class="btn btn-secondary" id="stopBtn" style="background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #ef4444;">Stop</button>
+        </div>
+
+        <div class="options-row">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="playLocalCheck" checked>
+            <span>Play on Laptop/Robot Speaker</span>
+          </label>
+        </div>
+
+        <div class="presets-title">Quick Test Prompts</div>
+        <div class="preset-chips">
+          <button class="preset-chip" data-text="CYNEXIS, say hello to everyone.">"CYNEXIS, say hello to everyone."</button>
+          <button class="preset-chip" data-text="CYNEXIS, introduce yourself.">"CYNEXIS, introduce yourself."</button>
+          <button class="preset-chip" data-text="What can you do?">"What can you do?"</button>
+          <button class="preset-chip" data-text="CYNEXIS, move forward">"CYNEXIS, move forward"</button>
+          <button class="preset-chip" data-text="CYNEXIS, stop">"CYNEXIS, stop"</button>
+        </div>
+      </section>
+
+      <!-- Right Panel: Pipeline Timeline & Telemetry -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Pipeline Telemetry</h2>
+          <span class="step-meta" id="pipelineDuration">0.00s</span>
+        </div>
+
+        <div class="telemetry-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 15px; font-size: 0.85rem; opacity: 0.9;">
+          <div class="telemetry-item" style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">STT Latency</div>
+            <div id="telemetrySTT" style="font-weight: bold; color: #38bdf8; margin-top: 2px;">—</div>
+          </div>
+          <div class="telemetry-item" style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Intent Classification</div>
+            <div id="telemetryIntent" style="font-weight: bold; color: #38bdf8; margin-top: 2px;">—</div>
+          </div>
+          <div class="telemetry-item" style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">LLM / Action</div>
+            <div id="telemetryLLM" style="font-weight: bold; color: #38bdf8; margin-top: 2px;">—</div>
+          </div>
+          <div class="telemetry-item" style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">TTS First Chunk</div>
+            <div id="telemetryFirstAudio" style="font-weight: bold; color: #38bdf8; margin-top: 2px;">—</div>
+          </div>
+          <div class="telemetry-item" style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(56,189,248,0.15); grid-column: span 2; display: flex; justify-content: space-between; align-items: center;">
+            <div style="color: #94a3b8; font-size: 0.75rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Time To First Audio (TTFA)</div>
+            <div id="telemetryTTFA" style="font-weight: 800; color: #10b981; font-size: 1.1rem; text-shadow: 0 0 10px rgba(16,185,129,0.2);">—</div>
+          </div>
+        </div>
+
+
+        <div class="pipeline-flow">
+          <div class="step-item" id="stepInput">
+            <div class="step-icon">🗣️</div>
+            <div class="step-content">
+              <div class="step-header">
+                <span class="step-title">Recognized Input</span>
+              </div>
+              <div class="step-value" id="valInput">—</div>
+            </div>
+          </div>
+
+          <div class="step-item" id="stepIntent">
+            <div class="step-icon">🧠</div>
+            <div class="step-content">
+              <div class="step-header">
+                <span class="step-title">Intent / Action</span>
+              </div>
+              <div class="step-value" id="valIntent">—</div>
+            </div>
+          </div>
+
+          <div class="step-item" id="stepResponse">
+            <div class="step-icon">🤖</div>
+            <div class="step-content">
+              <div class="step-header">
+                <span class="step-title">AI / Action Response</span>
+              </div>
+              <div class="step-value" id="valResponse">—</div>
+            </div>
+          </div>
+
+          <div class="step-item" id="stepTTS">
+            <div class="step-icon">🔊</div>
+            <div class="step-content">
+              <div class="step-header">
+                <span class="step-title">Kokoro TTS Output</span>
+                <span class="step-meta" id="ttsMeta">—</span>
+              </div>
+              <div class="step-value" id="valTTS">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="audio-player-wrap">
+          <audio id="audioPlayer" controls></audio>
+        </div>
+      </section>
+    </div>
+
+    <!-- LLM Telemetry Card (full-width below main grid) -->
+    <section class="card" style="margin-top: 20px;">
+      <div class="card-header">
+        <h2>🤖 Local LLM Telemetry</h2>
+        <span class="step-meta" id="llmStatusBadge" style="padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3);">OFFLINE</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px; font-size: 0.85rem;">
+        <!-- Provider Info -->
+        <div style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07); grid-column: span 3;">
+          <div style="display: flex; gap: 32px; flex-wrap: wrap; align-items: center;">
+            <div>
+              <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Provider</div>
+              <div id="llmProvider" style="font-weight: 700; color: #f8fafc; margin-top: 2px;">—</div>
+            </div>
+            <div>
+              <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Model</div>
+              <div id="llmModel" style="font-weight: 700; color: #6366f1; margin-top: 2px;">—</div>
+            </div>
+            <div>
+              <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Parameters</div>
+              <div id="llmParams" style="font-weight: 700; color: #f8fafc; margin-top: 2px;">—</div>
+            </div>
+            <div>
+              <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Quantization</div>
+              <div id="llmQuant" style="font-weight: 700; color: #f8fafc; margin-top: 2px;">—</div>
+            </div>
+            <div style="margin-left: auto;">
+              <button id="llmTestBtn" class="btn btn-secondary" style="font-size: 0.8rem; padding: 8px 16px;">⚡ Test LLM</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metric: TTFT -->
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">First Token (TTFT)</div>
+          <div id="llmTTFT" style="font-weight: 800; color: #38bdf8; font-size: 1.2rem; margin-top: 4px;">—</div>
+        </div>
+
+        <!-- Metric: First Sentence -->
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">First Sentence</div>
+          <div id="llmFirstSentence" style="font-weight: 800; color: #38bdf8; font-size: 1.2rem; margin-top: 4px;">—</div>
+        </div>
+
+        <!-- Metric: Generation Time -->
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Generation Time</div>
+          <div id="llmGenTime" style="font-weight: 800; color: #38bdf8; font-size: 1.2rem; margin-top: 4px;">—</div>
+        </div>
+
+        <!-- Metric: Tokens/sec -->
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Tokens / sec</div>
+          <div id="llmTPS" style="font-weight: 800; color: #10b981; font-size: 1.2rem; margin-top: 4px;">—</div>
+        </div>
+
+        <!-- Metric: Tokens Generated -->
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Tokens Generated</div>
+          <div id="llmTokenCount" style="font-weight: 800; color: #f8fafc; font-size: 1.2rem; margin-top: 4px;">—</div>
+        </div>
+
+        <!-- Metric: TTFA from LLM -->
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">TTFA (LLM perspective)</div>
+          <div id="llmTTFA" style="font-weight: 800; color: #10b981; font-size: 1.2rem; margin-top: 4px;">—</div>
+        </div>
+
+        <!-- LLM Test Response -->
+        <div id="llmTestOutput" style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07); grid-column: span 3; display: none;">
+          <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">LLM Test Response</div>
+          <div id="llmTestResponse" style="color: #f8fafc; line-height: 1.5;">—</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const voiceSelect = document.getElementById('voiceSelect');
+    const speedSlider = document.getElementById('speedSlider');
+    const speedVal = document.getElementById('speedVal');
+    const micBtn = document.getElementById('micBtn');
+    const micHint = document.getElementById('micHint');
+    const textInput = document.getElementById('textInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const playLocalCheck = document.getElementById('playLocalCheck');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+
+    const valInput = document.getElementById('valInput');
+    const valIntent = document.getElementById('valIntent');
+    const valResponse = document.getElementById('valResponse');
+    const valTTS = document.getElementById('valTTS');
+    const ttsMeta = document.getElementById('ttsMeta');
+    const pipelineDuration = document.getElementById('pipelineDuration');
+
+    let recognition = null;
+    let isListening = false;
+
+    // Check backend status on load
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/voice/status');
+        if (res.ok) {
+          const data = await res.json();
+          statusIndicator.style.background = '#10b981';
+          statusText.textContent = `Provider: ${data.provider.toUpperCase()} | Voice: ${data.current_voice_name}`;
+          if (data.current_voice) {
+            voiceSelect.value = data.current_voice;
+          }
+          if (data.speed) {
+            speedSlider.value = data.speed;
+            speedVal.textContent = `${data.speed}x`;
+          }
+        }
+      } catch (e) {
+        statusIndicator.style.background = '#f59e0b';
+        statusText.textContent = 'Degraded / Mock Mode';
+      }
+    }
+
+    // Voice selection change
+    voiceSelect.addEventListener('change', async () => {
+      const voiceId = voiceSelect.value;
+      try {
+        await fetch('/api/voice/select', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voice: voiceId }),
+        });
+        checkStatus();
+      } catch (e) {
+        console.error('Failed to switch voice:', e);
+      }
+    });
+
+    // Speed slider change
+    speedSlider.addEventListener('input', () => {
+      speedVal.textContent = `${speedSlider.value}x`;
+    });
+
+    speedSlider.addEventListener('change', async () => {
+      try {
+        await fetch('/api/voice/speed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ speed: parseFloat(speedSlider.value) }),
+        });
+      } catch (e) {
+        console.error('Failed to set speed:', e);
+      }
+    });
+
+    // Stop speech handler
+    stopBtn.addEventListener('click', async () => {
+      try {
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+        await fetch('/api/conversation/stop', { method: 'POST' });
+        valTTS.textContent = 'Speech playback stopped.';
+      } catch (e) {
+        console.error('Failed to stop speech:', e);
+      }
+    });
+
+    // Process end-to-end conversation
+    async function processSpeech(text) {
+      if (!text || !text.trim()) return;
+      const cleanText = text.trim();
+
+      const startTime = performance.now();
+      valInput.textContent = `"${cleanText}"`;
+      valIntent.textContent = 'Processing intent...';
+      valResponse.textContent = 'Generating response...';
+      valTTS.textContent = 'Synthesizing with Kokoro...';
+      ttsMeta.textContent = '...';
+
+      try {
+        const voiceId = voiceSelect.value;
+        const speed = parseFloat(speedSlider.value);
+        const playLocal = playLocalCheck.checked;
+
+        const res = await fetch('/api/conversation/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: cleanText,
+            voice: voiceId,
+            speed: speed,
+            play_local: playLocal,
+          }),
+        });
+
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+        pipelineDuration.textContent = `${elapsed}s`;
+
+        if (!res.ok) {
+          const err = await res.json();
+          valTTS.textContent = `Error: ${err.detail || 'Processing failed'}`;
+          return;
+        }
+
+        const data = await res.json();
+        const isCmd = data.is_command;
+        valIntent.textContent = `${data.intent} (${isCmd ? 'Robot Action' : 'Conversational AI'})`;
+        valResponse.textContent = `"${data.response}"`;
+        
+        const lat = data.latencies || {};
+        valTTS.textContent = `TTS Latency: ${lat.tts_s || 0}s (Audio Duration: ${data.duration_s}s)`;
+        ttsMeta.textContent = `${data.voice} @ ${data.speed}x [${data.tts_provider.toUpperCase()}]`;
+
+        document.getElementById('telemetrySTT').textContent = `${lat.stt_s || 0.0}s`;
+        document.getElementById('telemetryIntent').textContent = `${lat.intent_s || 0.0}s`;
+        document.getElementById('telemetryLLM').textContent = `${lat.llm_or_action_s || 0.0}s`;
+        document.getElementById('telemetryFirstAudio').textContent = `${lat.tts_first_chunk_s || 0.0}s`;
+        document.getElementById('telemetryTTFA').textContent = `${lat.time_to_first_audio_s || 0.0}s`;
+
+        if (data.audio_base64 && !playLocal) {
+          // Only play in-browser when NOT using play_local (server-side speaker).
+          // When play_local=true the server already plays through LocalAudioOutput;
+          // playing here too causes the doubled/echo audio the user hears.
+          const audioUrl = `data:audio/wav;base64,${data.audio_base64}`;
+          audioPlayer.src = audioUrl;
+          audioPlayer.play().catch(() => {});
+        } else if (data.audio_base64 && playLocal) {
+          // Server played it — just wire the <audio> element so user can replay
+          // manually via the browser player controls, but don't auto-play.
+          const audioUrl = `data:audio/wav;base64,${data.audio_base64}`;
+          audioPlayer.src = audioUrl;
+          // Do NOT call audioPlayer.play() here.
+        }
+      } catch (err) {
+        valTTS.textContent = `Request error: ${err.message}`;
+      }
+    }
+
+
+    sendBtn.addEventListener('click', () => {
+      processSpeech(textInput.value);
+      textInput.value = '';
+    });
+
+    textInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        processSpeech(textInput.value);
+        textInput.value = '';
+      }
+    });
+
+    // Preset click handlers
+    document.querySelectorAll('.preset-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const txt = btn.getAttribute('data-text');
+        textInput.value = txt;
+        processSpeech(txt);
+      });
+    });
+
+    // ── 100% OFFLINE IN-BROWSER AUDIO RECORDER ──────────────────────────────
+    let audioContext = null;
+    let mediaStream = null;
+    let scriptProcessor = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let silenceTimer = null;
+    let speechDetected = false;
+    let maxRecordingTimer = null;
+
+    function encodeWAV(samples, sampleRate = 16000) {
+      const buffer = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buffer);
+
+      function writeString(offset, string) {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
+        }
+      }
+
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + samples.length * 2, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM format
+      view.setUint16(22, 1, true); // Mono channel
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true); // Byte rate
+      view.setUint16(32, 2, true); // Block align
+      view.setUint16(34, 16, true); // Bits per sample
+      writeString(36, 'data');
+      view.setUint32(40, samples.length * 2, true);
+
+      let offset = 44;
+      for (let i = 0; i < samples.length; i++, offset += 2) {
+        let s = Math.max(-1, Math.min(1, samples[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      }
+      return buffer;
+    }
+
+    function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
+      if (inputSampleRate === outputSampleRate) return buffer;
+      const ratio = inputSampleRate / outputSampleRate;
+      const newLength = Math.round(buffer.length / ratio);
+      const result = new Float32Array(newLength);
+      let offsetResult = 0;
+      let offsetBuffer = 0;
+      while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+          accum += buffer[i];
+          count++;
+        }
+        result[offsetResult] = count > 0 ? accum / count : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+      }
+      return result;
+    }
+
+    function arrayBufferToBase64(buffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary);
+    }
+
+    async function processAudio(base64Wav) {
+      const startTime = performance.now();
+      valInput.textContent = 'Transcribing with Faster-Whisper (Offline)...';
+      valIntent.textContent = 'Processing intent...';
+      valResponse.textContent = 'Generating response with local LLM...';
+      valTTS.textContent = 'Synthesizing speech with Kokoro TTS...';
+      ttsMeta.textContent = '...';
+
+      try {
+        const voiceId = voiceSelect.value;
+        const speed = parseFloat(speedSlider.value);
+        const playLocal = playLocalCheck.checked;
+
+        const res = await fetch('/api/conversation/audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            audio_base64: base64Wav,
+            voice: voiceId,
+            speed: speed,
+            play_local: playLocal,
+          }),
+        });
+
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+        pipelineDuration.textContent = `${elapsed}s`;
+
+        if (!res.ok) {
+          const err = await res.json();
+          valTTS.textContent = `Error: ${err.detail || 'Audio processing failed'}`;
+          return;
+        }
+
+        const data = await res.json();
+        const isCmd = data.is_command;
+        valInput.textContent = `"${data.recognized_text || '(No speech detected)'}"`;
+        valIntent.textContent = `${data.intent || 'CONVERSATION'} (${isCmd ? 'Robot Action' : 'Conversational AI'})`;
+        valResponse.textContent = `"${data.response || ''}"`;
+
+        const lat = data.latencies || {};
+        valTTS.textContent = `TTS Latency: ${lat.tts_s || 0}s (Audio Duration: ${data.duration_s || 0}s)`;
+        ttsMeta.textContent = `${data.voice} @ ${data.speed}x [${(data.tts_provider || 'KOKORO').toUpperCase()}]`;
+
+        document.getElementById('telemetrySTT').textContent = `${lat.stt_s || 0.0}s`;
+        document.getElementById('telemetryIntent').textContent = `${lat.intent_s || 0.0}s`;
+        document.getElementById('telemetryLLM').textContent = `${lat.llm_or_action_s || 0.0}s`;
+        document.getElementById('telemetryFirstAudio').textContent = `${lat.tts_first_chunk_s || 0.0}s`;
+        document.getElementById('telemetryTTFA').textContent = `${lat.time_to_first_audio_s || lat.actual_ttfa || 0.0}s`;
+
+        if (data.audio_base64 && !playLocal) {
+          const audioUrl = `data:audio/wav;base64,${data.audio_base64}`;
+          audioPlayer.src = audioUrl;
+          audioPlayer.play().catch(() => {});
+        } else if (data.audio_base64 && playLocal) {
+          const audioUrl = `data:audio/wav;base64,${data.audio_base64}`;
+          audioPlayer.src = audioUrl;
+        }
+        setTimeout(fetchLLMStatus, 500);
+      } catch (err) {
+        valTTS.textContent = `Request error: ${err.message}`;
+      }
+    }
+
+    async function startRecording() {
+      try {
+        audioChunks = [];
+        speechDetected = false;
+        if (silenceTimer) clearTimeout(silenceTimer);
+        if (maxRecordingTimer) clearTimeout(maxRecordingTimer);
+
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          }
+        });
+
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(mediaStream);
+        const bufferSize = 4096;
+        scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+
+        scriptProcessor.onaudioprocess = (e) => {
+          if (!isRecording) return;
+          const inputData = e.inputBuffer.getChannelData(0);
+          audioChunks.push(new Float32Array(inputData));
+
+          // Basic energy / VAD calculation
+          let sum = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sum += inputData[i] * inputData[i];
+          }
+          const rms = Math.sqrt(sum / inputData.length);
+
+          if (rms > 0.015) {
+            speechDetected = true;
+            if (silenceTimer) {
+              clearTimeout(silenceTimer);
+              silenceTimer = null;
+            }
+          } else if (speechDetected && !silenceTimer) {
+            // User spoke and has now stopped speaking for 1.2s -> auto stop & process
+            silenceTimer = setTimeout(() => {
+              if (isRecording) {
+                stopRecording();
+              }
+            }, 1200);
+          }
+        };
+
+        source.connect(scriptProcessor);
+        scriptProcessor.connect(audioContext.destination);
+
+        isRecording = true;
+        micBtn.classList.add('listening');
+        micHint.textContent = '🔴 Listening (100% Offline)... Speak now (click again to stop)';
+
+        // Hard cap max recording duration to 8s
+        maxRecordingTimer = setTimeout(() => {
+          if (isRecording) stopRecording();
+        }, 8000);
+
+      } catch (err) {
+        console.error('Microphone access error:', err);
+        micHint.textContent = `Mic error: ${err.message}. Please check browser mic permissions.`;
+        isRecording = false;
+        micBtn.classList.remove('listening');
+      }
+    }
+
+    async function stopRecording() {
+      if (!isRecording) return;
+      isRecording = false;
+      micBtn.classList.remove('listening');
+      micHint.textContent = '⏳ Processing speech offline with Faster-Whisper...';
+
+      if (silenceTimer) clearTimeout(silenceTimer);
+      if (maxRecordingTimer) clearTimeout(maxRecordingTimer);
+
+      if (scriptProcessor) {
+        scriptProcessor.disconnect();
+        scriptProcessor = null;
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+
+      const inputSampleRate = audioContext ? audioContext.sampleRate : 44100;
+      if (audioContext && audioContext.state !== 'closed') {
+        await audioContext.close();
+      }
+
+      if (audioChunks.length === 0) {
+        micHint.textContent = 'Click microphone to speak or type below';
+        return;
+      }
+
+      // Merge all chunks
+      let totalSamples = 0;
+      for (const chunk of audioChunks) totalSamples += chunk.length;
+      const merged = new Float32Array(totalSamples);
+      let offset = 0;
+      for (const chunk of audioChunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      // Downsample to 16kHz for Faster-Whisper
+      const downsampled = downsampleBuffer(merged, inputSampleRate, 16000);
+      const wavBuffer = encodeWAV(downsampled, 16000);
+      const base64Wav = arrayBufferToBase64(wavBuffer);
+
+      await processAudio(base64Wav);
+      micHint.textContent = 'Click microphone to speak or type below';
+    }
+
+    micBtn.addEventListener('click', () => {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    });
+
+    checkStatus();
+    fetchLLMStatus();
+    setInterval(fetchLLMStatus, 15000); // Refresh LLM status every 15s
+
+    // ── LLM Telemetry Helpers ────────────────────────────────────────────────
+
+    function updateLLMTelemetry(telem) {
+      if (!telem) return;
+      const fmt = (v) => v != null ? `${v}s` : '—';
+      document.getElementById('llmTTFT').textContent = fmt(telem.ttft_s);
+      document.getElementById('llmFirstSentence').textContent = fmt(telem.first_sentence_s);
+      document.getElementById('llmGenTime').textContent = fmt(telem.generation_s);
+      document.getElementById('llmTPS').textContent = telem.tokens_per_sec != null ? telem.tokens_per_sec : '—';
+      document.getElementById('llmTokenCount').textContent = telem.tokens_generated != null ? telem.tokens_generated : '—';
+      document.getElementById('llmTTFA').textContent = fmt(telem.ttfa_s);
+    }
+
+    async function fetchLLMStatus() {
+      try {
+        const res = await fetch('/api/llm/status');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const badge = document.getElementById('llmStatusBadge');
+        const statusOnline = data.status === 'ONLINE';
+        badge.textContent = data.status || 'UNKNOWN';
+        badge.style.background = statusOnline ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
+        badge.style.color = statusOnline ? '#10b981' : '#ef4444';
+        badge.style.borderColor = statusOnline ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)';
+
+        document.getElementById('llmProvider').textContent = data.provider || '—';
+        document.getElementById('llmModel').textContent = data.model || '—';
+
+        if (data.telemetry) updateLLMTelemetry(data.telemetry);
+
+        // Also fetch model details if online
+        if (statusOnline) {
+          try {
+            const mr = await fetch('/api/llm/model');
+            if (mr.ok) {
+              const md = await mr.json();
+              document.getElementById('llmParams').textContent = md.parameter_size || '—';
+              document.getElementById('llmQuant').textContent = md.quantization || '—';
+            }
+          } catch (e) {}
+        }
+      } catch (e) {
+        console.warn('LLM status fetch failed:', e);
+      }
+    }
+
+    // LLM Test Button
+    document.getElementById('llmTestBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('llmTestBtn');
+      const output = document.getElementById('llmTestOutput');
+      const responseEl = document.getElementById('llmTestResponse');
+      btn.disabled = true;
+      btn.textContent = '⏳ Generating...';
+      output.style.display = 'block';
+      responseEl.textContent = 'Waiting for LLM response...';
+      try {
+        const res = await fetch('/api/llm/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: 'What is CYNEXIS?' }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          responseEl.textContent = `"${data.response}" (${data.elapsed_s}s)`;
+          if (data.telemetry) updateLLMTelemetry(data.telemetry);
+        } else {
+          const err = await res.json();
+          responseEl.textContent = `Error: ${err.detail}`;
+        }
+      } catch (e) {
+        responseEl.textContent = `Request error: ${e.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ Test LLM';
+      }
+    });
+
+    // Update LLM telemetry after each pipeline call
+    const originalProcessSpeech = processSpeech;
+    async function processSpeechWithLLMTelemetry(text) {
+      await originalProcessSpeech(text);
+      // Refresh LLM telemetry after conversation response
+      setTimeout(fetchLLMStatus, 500);
+    }
+    // Override sendBtn and presets to use the enhanced function
+    sendBtn.removeEventListener('click', () => {});
+    sendBtn.addEventListener('click', () => {
+      processSpeechWithLLMTelemetry(textInput.value);
+      textInput.value = '';
+    });
+  </script>
+</body>
+</html>

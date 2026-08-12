@@ -1,0 +1,39 @@
+# CYNEXIS — Production Dependencies
+# Install: pip install -r requirements.txt
+
+# Web framework
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+websockets==17.0.1
+httpx>=0.28.0
+
+# Data & validation
+pydantic==2.13.4
+pydantic-settings>=2.8.0
+python-dotenv==1.2.2
+pyyaml==6.0.3
+numpy==2.5.1
+
+# Database
+aiosqlite>=0.21.0
+
+# Serial (ESP32)
+pyserial==3.5
+
+# Vision
+opencv-python==5.0.0.93
+pillow>=12.0.0
+einops>=0.8.0
+
+# System
+psutil==7.2.2
+requests==2.34.2
+
+# Audio & TTS
+sounddevice==0.5.5
+soundfile>=0.13.0
+kokoro==0.9.4
+faster-whisper>=1.0.0
+
+# LLM (Local via Ollama)
+ollama>=0.4.0

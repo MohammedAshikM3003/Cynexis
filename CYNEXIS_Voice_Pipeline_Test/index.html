@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CYNEXIS Voice Pipeline Test</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f5f7fa;color:#17202a}
+.wrap{max-width:1000px;margin:auto;padding:32px 20px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.brand{font-size:26px;font-weight:800;letter-spacing:.08em}.status{padding:8px 12px;border-radius:999px;background:#e8f5e9;color:#217a35;font-size:13px}
+.grid{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}.card{background:white;border:1px solid #e2e7ed;border-radius:18px;padding:20px;box-shadow:0 8px 30px #1e2d3c10}
+h2{margin:0 0 14px;font-size:18px}.mic{width:112px;height:112px;border-radius:50%;border:0;background:#17202a;color:white;font-size:42px;cursor:pointer;display:block;margin:25px auto 12px}
+.mic.listening{background:#b3261e;animation:pulse 1.2s infinite}@keyframes pulse{50%{transform:scale(1.05)}}
+.hint{text-align:center;color:#68737d;font-size:14px}.transcript{min-height:90px;padding:15px;border-radius:12px;background:#f5f7fa;margin-top:18px;font-size:18px}
+.pipeline{display:grid;gap:9px}.step{display:flex;gap:10px;padding:12px;border:1px solid #e3e8ed;border-radius:12px;background:#fbfcfd}
+.dot{width:9px;height:9px;border-radius:50%;background:#aab4bd;margin-top:4px}.step.active .dot{background:#1d7a46}
+.step strong{display:block;font-size:14px}.step small{color:#7a858f}.response{margin-top:18px;padding:16px;border-left:4px solid #17202a;background:#f8fafb;border-radius:8px;min-height:72px}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}button.secondary{padding:10px 14px;border:1px solid #d7dde3;border-radius:10px;background:white;cursor:pointer}
+.log{margin-top:18px;max-height:220px;overflow:auto;font-size:13px}.log div{padding:8px 0;border-bottom:1px solid #edf0f2}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="top"><div><div class="brand">CYNEXIS</div><div style="color:#68737d;font-size:13px">Voice Pipeline Laboratory</div></div><div class="status" id="status">READY</div></div>
+<div class="grid">
+<section class="card">
+<h2>🎤 Voice Input</h2>
+<button class="mic" id="mic">🎙</button>
+<div class="hint">Click the microphone and speak.</div>
+<div class="transcript" id="transcript">Your speech will appear here…</div>
+<div class="controls"><button class="secondary" id="speak">🔊 Speak response</button><button class="secondary" id="clear">Clear</button></div>
+<div class="response"><strong>CYNEXIS response</strong><div id="response" style="margin-top:8px;color:#4c5863">Ready. Ask me something.</div></div>
+<div class="log" id="log"></div>
+</section>
+<section class="card">
+<h2>🧠 Pipeline</h2>
+<div class="pipeline">
+<div class="step" id="s1"><span class="dot"></span><div><strong>Microphone</strong><small>Audio input</small></div></div>
+<div class="step" id="s2"><span class="dot"></span><div><strong>Speech-to-Text</strong><small>Audio → text</small></div></div>
+<div class="step" id="s3"><span class="dot"></span><div><strong>Intent Engine</strong><small>Command / question classification</small></div></div>
+<div class="step" id="s4"><span class="dot"></span><div><strong>Action / AI Response</strong><small>Mock CYNEXIS brain for this test</small></div></div>
+<div class="step" id="s5"><span class="dot"></span><div><strong>Text-to-Speech</strong><small>Text → laptop speaker</small></div></div>
+</div>
+<h2 style="margin-top:24px">Detected intent</h2><div class="response" id="intent">—</div>
+<h2 style="margin-top:20px">Try saying</h2>
+<div style="color:#68737d;font-size:13px;line-height:1.7">
+“CYNEXIS, say hello to everyone”<br>
+“CYNEXIS, move forward”<br>
+“CYNEXIS, stop”<br>
+“What is your name?”<br>
+“What can you do?”
+</div>
+</section>
+</div>
+</div>
+<script>
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition, mic=document.getElementById("mic");
+const transcript=document.getElementById("transcript"),response=document.getElementById("response"),intent=document.getElementById("intent"),status=document.getElementById("status"),logBox=document.getElementById("log");
+let last="Ready. Ask me something.",rec=null;
+function log(x){const d=document.createElement("div");d.textContent=new Date().toLocaleTimeString()+" — "+x;logBox.prepend(d)}
+function steps(on){for(let i=1;i<=5;i++)document.getElementById("s"+i).classList.toggle("active",on&&i<=on)}
+function classify(t){const x=t.toLowerCase();
+if(/\b(hello|hi|greet)\b/.test(x))return["HELLO","Hello everyone. I am CYNEXIS."];
+if(/\b(forward|go ahead)\b/.test(x))return["FORWARD","Forward command detected. In the real robot, this goes through the safety layer and rover controller."];
+if(/\b(stop|halt)\b/.test(x))return["STOP","Stop command detected. The real system will prioritize the safe stop path."];
+if(/\b(your name|who are you)\b/.test(x))return["GENERAL_QUESTION","I am CYNEXIS, an AI-assisted telepresence robotic system."];
+if(/\b(what can you do|capabilities)\b/.test(x))return["GENERAL_QUESTION","I can process voice commands, answer questions, use vision, report robot status, capture photos, and operate predefined safe robot behaviors."];
+return["GENERAL_QUESTION","I heard: "+t+". This browser demo uses a mock response; later this step will call the real local CYNEXIS AI pipeline."]}
+function speak(t){if(!speechSynthesis)return; speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=.95;u.pitch=1;const vs=speechSynthesis.getVoices();u.voice=vs.find(v=>/^en/i.test(v.lang))||vs[0];speechSynthesis.speak(u);steps(5);log("TTS → laptop speaker")}
+function processText(t){steps(2);setTimeout(()=>{steps(3);const r=classify(t);intent.textContent=r[0];response.textContent=r[1];last=r[1];steps(4);log("Intent → "+r[0]);setTimeout(()=>speak(r[1]),250)},300)}
+if(!SR){status.textContent="STT NOT SUPPORTED";mic.disabled=true;log("Use Chrome or Edge for browser microphone STT.");}
+else{rec=new SR();rec.lang="en-US";rec.continuous=false;rec.interimResults=true;
+rec.onstart=()=>{status.textContent="LISTENING";mic.classList.add("listening");log("Microphone listening");steps(1)};
+rec.onresult=e=>{let t="";for(let i=e.resultIndex;i<e.results.length;i++)t+=e.results[i][0].transcript;transcript.textContent=t;if(e.results[e.results.length-1].isFinal)processText(t)};
+rec.onerror=e=>{log("STT error: "+e.error);status.textContent="ERROR"};rec.onend=()=>{status.textContent="READY";mic.classList.remove("listening")};
+mic.onclick=()=>{try{rec.start()}catch(e){}}}
+document.getElementById("speak").onclick=()=>speak(last);
+document.getElementById("clear").onclick=()=>{transcript.textContent="Your speech will appear here…";response.textContent="Ready. Ask me something.";intent.textContent="—";steps(0);log("Cleared")};
+</script>
+</body>
+</html>

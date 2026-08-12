@@ -74,7 +74,25 @@ Tests/Logs/*.json
 Videos/*.mp4
 Videos/*.avi
 
+# ---- Runtime artifacts (auto-generated, never commit) ----
+Database/cynexis.db
+Photos/
+Recordings/
+
 # ---- Secrets (never commit these) ----
 *.secret
 secrets.json
 config.local.*
+
+# AI Models & Large Weights
+AI Models/
+*.safetensors
+*.onnx
+*.pt
+*.bin
+
+# Python Wheel Caches
+whl_cache/
+_whl_temp/
+test_whl/
+*.whl
