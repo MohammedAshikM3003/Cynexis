@@ -17,6 +17,8 @@ class RouteCategory(str, Enum):
     VISION = "VISION"
     CALCULATOR = "CALCULATOR"
     LIVE_WEB = "LIVE_WEB"
+    WEATHER = "WEATHER"
+    LOCATION = "LOCATION"
     PROJECT_KNOWLEDGE = "PROJECT_KNOWLEDGE"
     ROBOT_COMMAND = "ROBOT_COMMAND"
     UNKNOWN = "UNKNOWN"
@@ -35,3 +37,4 @@ class RoutingResult(BaseModel):
     direct_response: Optional[str] = Field(default=None, description="Pre-computed response if resolved deterministically")
     requires_llm_synthesis: bool = Field(default=False, description="True if retrieved context needs local LLM synthesis")
     augmented_context: Optional[str] = Field(default=None, description="Untrusted retrieved text to supply to LLM context")
+    online_telemetry: Optional[dict[str, Any]] = Field(default=None, description="Detailed telemetry for online search retrieval")

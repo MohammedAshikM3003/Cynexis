@@ -457,10 +457,14 @@
           <button class="btn btn-secondary" id="stopBtn" style="background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #ef4444;">Stop</button>
         </div>
 
-        <div class="options-row">
+        <div class="options-row" style="display: flex; gap: 20px;">
           <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
             <input type="checkbox" id="playLocalCheck" checked>
             <span>Play on Laptop/Robot Speaker</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="streamWSCheck" checked>
+            <span>Stream Audio (WebSocket)</span>
           </label>
         </div>
 
@@ -481,28 +485,62 @@
           <span class="step-meta" id="pipelineDuration">0.00s</span>
         </div>
 
-        <div class="telemetry-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 15px; font-size: 0.85rem; opacity: 0.9;">
-          <div class="telemetry-item" style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">STT Latency</div>
-            <div id="telemetrySTT" style="font-weight: bold; color: #38bdf8; margin-top: 2px;">—</div>
+        <!-- Pipeline Telemetry Breakdown Grid -->
+        <div class="telemetry-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 15px; font-size: 0.82rem;">
+
+          <!-- Row 1: STT -->
+          <div style="background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center;">
+            <div style="color:#94a3b8; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;">🎙️ STT (Whisper)</div>
+            <div id="telemetrySTT" style="font-weight:700; color:#38bdf8;">—</div>
           </div>
-          <div class="telemetry-item" style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Intent Classification</div>
-            <div id="telemetryIntent" style="font-weight: bold; color: #38bdf8; margin-top: 2px;">—</div>
+
+          <!-- Row 1b: Intent -->
+          <div style="background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center;">
+            <div style="color:#94a3b8; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;">🧭 Router / Intent</div>
+            <div id="telemetryIntent" style="font-weight:700; color:#38bdf8;">—</div>
           </div>
-          <div class="telemetry-item" style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">LLM / Action</div>
-            <div id="telemetryLLM" style="font-weight: bold; color: #38bdf8; margin-top: 2px;">—</div>
+
+          <!-- Row 2: Online Search (hidden when N/A) -->
+          <div id="searchTelRow" style="background:rgba(245,158,11,0.06); padding:8px 12px; border-radius:6px; border:1px solid rgba(245,158,11,0.15); grid-column:span 2; display:none; justify-content:space-between; align-items:center;">
+            <div style="color:#f59e0b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">🌐 Online Search</div>
+            <div id="telemetrySearch" style="font-weight:700; color:#f59e0b;">—</div>
           </div>
-          <div class="telemetry-item" style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">TTS First Chunk</div>
-            <div id="telemetryFirstAudio" style="font-weight: bold; color: #38bdf8; margin-top: 2px;">—</div>
+
+          <!-- Row 3: LLM TTFT -->
+          <div style="background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center;">
+            <div style="color:#94a3b8; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;">⚡ LLM First Token</div>
+            <div id="telemetryLLMTTFT" style="font-weight:700; color:#a78bfa;">—</div>
           </div>
-          <div class="telemetry-item" style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(56,189,248,0.15); grid-column: span 2; display: flex; justify-content: space-between; align-items: center;">
-            <div style="color: #94a3b8; font-size: 0.75rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Time To First Audio (TTFA)</div>
-            <div id="telemetryTTFA" style="font-weight: 800; color: #10b981; font-size: 1.1rem; text-shadow: 0 0 10px rgba(16,185,129,0.2);">—</div>
+
+          <!-- Row 3b: LLM Total -->
+          <div style="background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center;">
+            <div style="color:#94a3b8; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;">🤖 LLM Total</div>
+            <div id="telemetryLLM" style="font-weight:700; color:#a78bfa;">—</div>
           </div>
+
+          <!-- Row 4: Per-chunk TTS (injected dynamically by JS) -->
+          <div id="telemetryChunksWrap" style="grid-column:span 2; display:grid; grid-template-columns:1fr 1fr; gap:6px;"></div>
+
+          <!-- Row 5: TTS First Chunk (updated live as chunk 0 arrives) -->
+          <div style="background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center;">
+            <div style="color:#94a3b8; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;">🔊 TTS First Chunk</div>
+            <div id="telemetryFirstAudio" style="font-weight:700; color:#38bdf8;">—</div>
+          </div>
+
+          <!-- Row 5b: WS Delivery (browser side) -->
+          <div style="background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center;">
+            <div style="color:#94a3b8; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;">📡 WS Deliver</div>
+            <div id="telemetryWSDeliver" style="font-weight:700; color:#38bdf8;">—</div>
+          </div>
+
+          <!-- TTFA row — full width, prominent -->
+          <div style="background:rgba(16,185,129,0.06); padding:10px 14px; border-radius:6px; border:1px solid rgba(16,185,129,0.2); grid-column:span 2; display:flex; justify-content:space-between; align-items:center;">
+            <div style="color:#94a3b8; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">▶ True TTFA (query → first audio)</div>
+            <div id="telemetryTTFA" style="font-weight:800; color:#10b981; font-size:1.15rem; text-shadow:0 0 12px rgba(16,185,129,0.3);">—</div>
+          </div>
+
         </div>
+
 
 
         <div class="pipeline-flow">
@@ -633,6 +671,44 @@
   </div>
 
   <script>
+    // Geolocation Cache (5-minute TTL)
+    let cachedLocation = null;
+    let locationHandshakeActive = false;
+
+    async function getBrowserLocation(forceFresh = false) {
+      const now = Date.now();
+      if (!forceFresh && cachedLocation && (now - cachedLocation.timestamp < 300000) && cachedLocation.accuracy <= 2000) {
+        console.log("Using cached browser location (age: " + Math.round((now - cachedLocation.timestamp)/1000) + "s, accuracy: " + cachedLocation.accuracy + "m)");
+        return cachedLocation;
+      }
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject({ code: 0, message: "unsupported" });
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            cachedLocation = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              timestamp: now
+            };
+            console.log("Acquired fresh browser location:", cachedLocation);
+            resolve(cachedLocation);
+          },
+          (error) => {
+            reject(error);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 8000,
+            maximumAge: 300000
+          }
+        );
+      });
+    }
+
     const voiceSelect = document.getElementById('voiceSelect');
     const speedSlider = document.getElementById('speedSlider');
     const speedVal = document.getElementById('speedVal');
@@ -715,6 +791,7 @@
       try {
         audioPlayer.pause();
         audioPlayer.currentTime = 0;
+        resetAudioQueue();
         await fetch('/api/conversation/stop', { method: 'POST' });
         valTTS.textContent = 'Speech playback stopped.';
       } catch (e) {
@@ -722,8 +799,91 @@
       }
     });
 
+    const streamWSCheck = document.getElementById('streamWSCheck');
+    let progressiveAudioCtx = null;
+    let nextChunkStartTime = 0;
+    let progressiveSources = [];
+
+    function initProgressiveAudio() {
+      if (!progressiveAudioCtx) {
+        progressiveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (progressiveAudioCtx.state === 'suspended') {
+        progressiveAudioCtx.resume();
+      }
+    }
+
+    function resetAudioQueue() {
+      progressiveSources.forEach(src => {
+        try { src.stop(); } catch(e) {}
+      });
+      progressiveSources = [];
+      nextChunkStartTime = 0;
+    }
+
+    function base64ToArrayBuffer(base64) {
+      const binary = window.atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    async function playAudioChunk(base64Wav, chunkIdx, onPlayStartCallback, onDecodeCallback) {
+      console.log(`playAudioChunk entered: chunkIdx=${chunkIdx}`);
+      try {
+        initProgressiveAudio();
+        console.log(`AudioContext state: ${progressiveAudioCtx.state}`);
+        const arrayBuf = base64ToArrayBuffer(base64Wav);
+        console.log(`ArrayBuffer size: ${arrayBuf.byteLength} bytes`);
+        
+        const audioBuffer = await progressiveAudioCtx.decodeAudioData(arrayBuf);
+        console.log(`Decoded successfully: duration=${audioBuffer.duration}s, sampleRate=${audioBuffer.sampleRate}Hz`);
+        
+        if (onDecodeCallback) {
+          onDecodeCallback();
+        }
+        
+        const source = progressiveAudioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(progressiveAudioCtx.destination);
+        
+        const now = progressiveAudioCtx.currentTime;
+        console.log(`AudioContext currentTime: ${now.toFixed(3)}s, nextChunkStartTime: ${nextChunkStartTime.toFixed(3)}s`);
+        
+        if (chunkIdx === 0 || nextChunkStartTime < now) {
+          nextChunkStartTime = now + 0.03;
+          console.log(`Queue empty/stalled/first. Scheduling immediately at nextChunkStartTime: ${nextChunkStartTime.toFixed(3)}s`);
+          if (onPlayStartCallback) {
+            console.log("Triggering onPlayStartCallback...");
+            onPlayStartCallback(nextChunkStartTime, audioBuffer.duration);
+          }
+        } else {
+          console.log(`Queue active. Scheduling chunk at playTime: ${nextChunkStartTime.toFixed(3)}s`);
+          if (onPlayStartCallback) {
+            console.log("Triggering onPlayStartCallback...");
+            onPlayStartCallback(nextChunkStartTime, audioBuffer.duration);
+          }
+        }
+        
+        const playTime = nextChunkStartTime;
+        source.start(playTime);
+        progressiveSources.push(source);
+        
+        nextChunkStartTime += audioBuffer.duration;
+      } catch (err) {
+        console.error(`Failed to decode or play audio chunk ${chunkIdx}:`, err);
+      }
+    }
+
     // Process end-to-end conversation
     async function processSpeech(text) {
+      if (locationHandshakeActive) {
+        console.warn("Location handshake active, ignoring text submission.");
+        return;
+      }
       if (!text || !text.trim()) return;
       const cleanText = text.trim();
 
@@ -738,6 +898,195 @@
         const voiceId = voiceSelect.value;
         const speed = parseFloat(speedSlider.value);
         const playLocal = playLocalCheck.checked;
+        const useWS = streamWSCheck.checked;
+
+        const weatherKeywords = ["weather", "temperature", "forecast", "raining", "humidity", "will it rain", "wind speed", "hot outside", "cold outside", "temperature here", "is it raining", "will it rain", "how hot is it", "how cold is it"];
+        const hasExplicitCity = /\b(in|for|at)\s+[a-zA-Z]/.test(cleanText.toLowerCase()) && 
+                                !cleanText.toLowerCase().includes("here") && 
+                                !cleanText.toLowerCase().includes("location");
+        const isWeatherText = weatherKeywords.some(kw => cleanText.toLowerCase().includes(kw)) && !hasExplicitCity;
+
+        const locationKeywords = ["where am i", "my location", "current location", "get my location", "where is this"];
+        const isLocationText = locationKeywords.some(kw => cleanText.toLowerCase().includes(kw));
+        const shouldAcquireLocation = isWeatherText || isLocationText;
+
+        const freshKeywords = ["weather now", "weather today", "what's the weather here", "weather here", "temperature here", "my location", "current location"];
+        const forceFresh = freshKeywords.some(kw => cleanText.toLowerCase().includes(kw));
+
+        let locationData = {};
+        if (shouldAcquireLocation) {
+          try {
+            const loc = await getBrowserLocation(forceFresh);
+            locationData = {
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+              accuracy: loc.accuracy,
+              timestamp: loc.timestamp
+            };
+            console.log("Proactively acquired location for text weather query:", locationData);
+          } catch (err) {
+            console.warn("Could not proactively acquire location for text query:", err);
+          }
+        }
+
+        if (useWS) {
+          resetAudioQueue();
+          valTTS.textContent = "Synthesizing progressively via WebSocket...";
+          // Reset per-chunk telemetry rows
+          document.getElementById('telemetryChunksWrap').innerHTML = '';
+          document.getElementById('searchTelRow').style.display = 'none';
+          document.getElementById('telemetryLLMTTFT').textContent = '—';
+          document.getElementById('telemetryWSDeliver').textContent = '—';
+          document.getElementById('telemetryTTFA').textContent = '—';
+          document.getElementById('telemetryFirstAudio').textContent = '—';
+          document.getElementById('telemetryLLM').textContent = '—';
+          
+          let last_chunk_end_time = 0;
+          const wsScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const wsUrl = `${wsScheme}//${window.location.host}/ws/voice`;
+          const ws = new WebSocket(wsUrl);
+          
+          let t_tts_start = null;
+          
+          ws.onopen = () => {
+            ws.send(JSON.stringify({
+              text: cleanText,
+              voice: voiceId,
+              speed: speed,
+              play_local: playLocal,
+              ...locationData
+            }));
+          };
+          
+          ws.onmessage = async (event) => {
+            const msg = JSON.parse(event.data);
+            
+            if (msg.type === "started") {
+              t_tts_start = performance.now();
+            } 
+            else if (msg.type === "request_location") {
+              locationHandshakeActive = true;
+              sendBtn.disabled = true;
+              micBtn.disabled = true;
+              textInput.disabled = true;
+              try {
+                const loc = await getBrowserLocation(false);
+                ws.send(JSON.stringify({
+                  type: "location_response",
+                  latitude: loc.latitude,
+                  longitude: loc.longitude,
+                  accuracy: loc.accuracy,
+                  timestamp: loc.timestamp
+                }));
+              } catch (error) {
+                let errStr = "unavailable";
+                if (error.code === 1) errStr = "permission_denied";
+                else if (error.code === 2) errStr = "unavailable";
+                else if (error.code === 3) errStr = "timeout";
+                else if (error.message === "unsupported") errStr = "unsupported";
+                ws.send(JSON.stringify({
+                  type: "location_error",
+                  error: errStr
+                }));
+              } finally {
+                locationHandshakeActive = false;
+                sendBtn.disabled = false;
+                micBtn.disabled = false;
+                textInput.disabled = false;
+              }
+            }
+            else if (msg.type === "chunk") {
+              const t_chunk_received = performance.now();
+
+              // First chunk: update LLM timing (time from query start to first chunk received)
+              if (msg.is_first) {
+                document.getElementById('telemetrySTT').textContent = "0.0s (Text)";
+                document.getElementById('telemetryIntent').textContent = "—";
+                document.getElementById('telemetryLLM').textContent = `${((t_tts_start - startTime)/1000).toFixed(3)}s`;
+                document.getElementById('telemetryFirstAudio').textContent = `${((t_chunk_received - t_tts_start)/1000).toFixed(3)}s`;
+              }
+
+              // Inject per-chunk TTS row (server-side synthesis time)
+              const chunkSynthS = (msg.tts_end - msg.tts_start).toFixed(3);
+              const chunksWrap = document.getElementById('telemetryChunksWrap');
+              const chunkEl = document.createElement('div');
+              chunkEl.style.cssText = 'background:rgba(167,139,250,0.07);padding:6px 10px;border-radius:6px;border:1px solid rgba(167,139,250,0.15);display:flex;justify-content:space-between;align-items:center;font-size:0.78rem;';
+              chunkEl.innerHTML = `<span style="color:#94a3b8;">🔊 TTS Chunk ${msg.index} (${msg.text.length} ch)</span><span style="color:#a78bfa;font-weight:700;">${chunkSynthS}s</span>`;
+              chunksWrap.appendChild(chunkEl);
+
+              let t_decode_end = null;
+              let t_play_scheduled = null;
+              
+              await playAudioChunk(msg.audio_base64, msg.index, 
+                (playTime, duration) => {
+                  t_play_scheduled = performance.now();
+                  const wsDeliverMs = ((t_play_scheduled - t_chunk_received)).toFixed(1);
+                  const actual_gap = last_chunk_end_time > 0 ? (playTime - last_chunk_end_time) : 0;
+                  console.log(`[Telemetry Chunk ${msg.index}]
+  - TTS Synthesis (Server): ${chunkSynthS}s
+  - WS Send ts: ${msg.ws_send_ts}
+  - Client WS Receive (vs query start): ${((t_chunk_received - startTime)/1000).toFixed(3)}s
+  - Browser Decode: ${((t_decode_end - t_chunk_received)).toFixed(1)}ms
+  - Playback Scheduled Delay: ${(playTime - progressiveAudioCtx.currentTime).toFixed(3)}s
+  - Audio Gap (vs prev chunk): ${actual_gap.toFixed(3)}s`);
+                  
+                  last_chunk_end_time = playTime + duration;
+                  document.getElementById('telemetryWSDeliver').textContent = `${wsDeliverMs}ms`;
+
+                  if (msg.is_first) {
+                    document.getElementById('telemetryTTFA').textContent = `${((t_play_scheduled - startTime)/1000).toFixed(3)}s`;
+                  }
+                },
+                () => {
+                  t_decode_end = performance.now();
+                }
+              );
+              
+              valTTS.textContent = `Received chunk ${msg.index + 1}: "${msg.text}"`;
+            } 
+            else if (msg.type === "done") {
+              const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+              pipelineDuration.textContent = `${elapsed}s`;
+              
+              const ot = msg.online_telemetry;
+              // Online Search row: show only when it was actually used
+              if (ot && ot.online_intent) {
+                const searchRow = document.getElementById('searchTelRow');
+                searchRow.style.display = 'flex';
+                const statusColor = ot.search_status === 'SUCCESS' ? '#10b981'
+                                  : ot.search_status === 'TIMEOUT'  ? '#f59e0b' : '#94a3b8';
+                const badge = ot.search_status === 'TIMEOUT' ? '⚠️ TIMEOUT' : ot.search_status;
+                document.getElementById('telemetrySearch').innerHTML =
+                  `<span style="color:${statusColor};font-weight:700;">${badge}</span>` +
+                  ` &nbsp;${ot.search_latency_s}s, ${ot.result_count} result${ot.result_count !== 1 ? 's' : ''}`;
+              } else {
+                document.getElementById('searchTelRow').style.display = 'none';
+              }
+
+              // LLM TTFT from Ollama telemetry (in latencies object)
+              const lat = msg.latencies || {};
+              if (lat.llm_ttft !== undefined) {
+                document.getElementById('telemetryLLMTTFT').textContent = `${lat.llm_ttft.toFixed(3)}s`;
+              }
+
+              const searchSuffix = ot ? ` | Search: ${ot.search_status} (${ot.search_latency_s}s)` : '';
+              valIntent.textContent = `${msg.is_command ? 'Robot Action' : 'Conversational AI'}${searchSuffix}`;
+              valResponse.textContent = `"${msg.response || ''}"`;
+              
+              ttsMeta.textContent = `${voiceId} @ ${speed}x [PROGRESSIVE WEBSOCKET]`;
+              ws.close();
+            }
+            else if (msg.type === "error") {
+              valTTS.textContent = `WebSocket Error: ${msg.message}`;
+              ws.close();
+            }
+          };
+          
+          ws.onerror = (err) => {
+            valTTS.textContent = `WebSocket connection error`;
+          };
+          return;
+        }
 
         const res = await fetch('/api/conversation/text', {
           method: 'POST',
@@ -747,6 +1096,7 @@
             voice: voiceId,
             speed: speed,
             play_local: playLocal,
+            ...locationData
           }),
         });
 
@@ -761,7 +1111,8 @@
 
         const data = await res.json();
         const isCmd = data.is_command;
-        valIntent.textContent = `${data.intent} (${isCmd ? 'Robot Action' : 'Conversational AI'})`;
+        const searchSuffix = data.online_telemetry ? ` | Search: ${data.online_telemetry.search_status} (${data.online_telemetry.search_latency_s}s, ${data.online_telemetry.result_count} results)` : '';
+        valIntent.textContent = `${data.intent} (${isCmd ? 'Robot Action' : 'Conversational AI'})${searchSuffix}`;
         valResponse.textContent = `"${data.response}"`;
         
         const lat = data.latencies || {};
@@ -771,22 +1122,28 @@
         document.getElementById('telemetrySTT').textContent = `${lat.stt_s || 0.0}s`;
         document.getElementById('telemetryIntent').textContent = `${lat.intent_s || 0.0}s`;
         document.getElementById('telemetryLLM').textContent = `${lat.llm_or_action_s || 0.0}s`;
+        document.getElementById('telemetryLLMTTFT').textContent = lat.llm_ttft !== undefined ? `${lat.llm_ttft.toFixed(3)}s` : '—';
         document.getElementById('telemetryFirstAudio').textContent = `${lat.tts_first_chunk_s || 0.0}s`;
         document.getElementById('telemetryTTFA').textContent = `${lat.time_to_first_audio_s || 0.0}s`;
+        document.getElementById('telemetryWSDeliver').textContent = '—';
+        document.getElementById('telemetryChunksWrap').innerHTML = '';
+        const restOT = data.online_telemetry;
+        if (restOT && restOT.online_intent) {
+          document.getElementById('searchTelRow').style.display = 'flex';
+          const sc = restOT.search_status === 'SUCCESS' ? '#10b981' : restOT.search_status === 'TIMEOUT' ? '#f59e0b' : '#94a3b8';
+          document.getElementById('telemetrySearch').innerHTML =
+            `<span style="color:${sc};font-weight:700;">${restOT.search_status}</span> &nbsp;${restOT.search_latency_s}s, ${restOT.result_count} results`;
+        } else {
+          document.getElementById('searchTelRow').style.display = 'none';
+        }
 
         if (data.audio_base64 && !playLocal) {
-          // Only play in-browser when NOT using play_local (server-side speaker).
-          // When play_local=true the server already plays through LocalAudioOutput;
-          // playing here too causes the doubled/echo audio the user hears.
           const audioUrl = `data:audio/wav;base64,${data.audio_base64}`;
           audioPlayer.src = audioUrl;
           audioPlayer.play().catch(() => {});
         } else if (data.audio_base64 && playLocal) {
-          // Server played it — just wire the <audio> element so user can replay
-          // manually via the browser player controls, but don't auto-play.
           const audioUrl = `data:audio/wav;base64,${data.audio_base64}`;
           audioPlayer.src = audioUrl;
-          // Do NOT call audioPlayer.play() here.
         }
       } catch (err) {
         valTTS.textContent = `Request error: ${err.message}`;
@@ -889,6 +1246,10 @@
     }
 
     async function processAudio(base64Wav) {
+      if (locationHandshakeActive) {
+        console.warn("Location handshake active, ignoring audio processing.");
+        return;
+      }
       const startTime = performance.now();
       valInput.textContent = 'Transcribing with Faster-Whisper (Offline)...';
       valIntent.textContent = 'Processing intent...';
@@ -900,6 +1261,132 @@
         const voiceId = voiceSelect.value;
         const speed = parseFloat(speedSlider.value);
         const playLocal = playLocalCheck.checked;
+        const useWS = streamWSCheck.checked;
+
+        if (useWS) {
+          resetAudioQueue();
+          valTTS.textContent = "Processing progressively via WebSocket...";
+          
+          let last_chunk_end_time = 0;
+          const wsScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const wsUrl = `${wsScheme}//${window.location.host}/ws/voice`;
+          const ws = new WebSocket(wsUrl);
+          
+          let t_tts_start = null;
+          
+          ws.onopen = () => {
+            ws.send(JSON.stringify({
+              audio_base64: base64Wav,
+              voice: voiceId,
+              speed: speed,
+              play_local: playLocal
+            }));
+          };
+          
+          ws.onmessage = async (event) => {
+            const msg = JSON.parse(event.data);
+            
+            if (msg.type === "started") {
+              t_tts_start = performance.now();
+            } 
+            else if (msg.type === "request_location") {
+              locationHandshakeActive = true;
+              sendBtn.disabled = true;
+              micBtn.disabled = true;
+              textInput.disabled = true;
+              try {
+                const loc = await getBrowserLocation(false);
+                ws.send(JSON.stringify({
+                  type: "location_response",
+                  latitude: loc.latitude,
+                  longitude: loc.longitude,
+                  accuracy: loc.accuracy,
+                  timestamp: loc.timestamp
+                }));
+              } catch (error) {
+                let errStr = "unavailable";
+                if (error.code === 1) errStr = "permission_denied";
+                else if (error.code === 2) errStr = "unavailable";
+                else if (error.code === 3) errStr = "timeout";
+                else if (error.message === "unsupported") errStr = "unsupported";
+                ws.send(JSON.stringify({
+                  type: "location_error",
+                  error: errStr
+                }));
+              } finally {
+                locationHandshakeActive = false;
+                sendBtn.disabled = false;
+                micBtn.disabled = false;
+                textInput.disabled = false;
+              }
+            }
+            else if (msg.type === "chunk") {
+              const t_chunk_received = performance.now();
+              if (msg.is_first) {
+                document.getElementById('telemetryIntent').textContent = "0.0s";
+                document.getElementById('telemetryLLM').textContent = `${((t_tts_start - startTime)/1000).toFixed(3)}s`;
+                document.getElementById('telemetryFirstAudio').textContent = `${((t_chunk_received - t_tts_start)/1000).toFixed(3)}s`;
+              }
+              
+              let t_decode_end = null;
+              let t_play_scheduled = null;
+              
+              await playAudioChunk(msg.audio_base64, msg.index, 
+                (playTime, duration) => {
+                  t_play_scheduled = performance.now();
+                  const actual_gap = last_chunk_end_time > 0 ? (playTime - last_chunk_end_time) : 0;
+                  console.log(`[Telemetry Chunk ${msg.index}]
+  - TTS Synthesis Time (Server): ${(msg.tts_end - msg.tts_start).toFixed(3)}s
+  - Server WS Send delta (vs TTS_START): ${(msg.ws_send_ts - msg.tts_start).toFixed(3)}s
+  - Client WS Receive delta (vs query start): ${((t_chunk_received - startTime)/1000).toFixed(3)}s
+  - Browser Decode Time: ${((t_decode_end - t_chunk_received)/1000).toFixed(3)}s
+  - Playback Scheduled Delay (vs now): ${(playTime - progressiveAudioCtx.currentTime).toFixed(3)}s
+  - Actual Playback Start (vs query start): ${((t_play_scheduled - startTime)/1000).toFixed(3)}s
+  - Audio Gap (vs previous chunk): ${actual_gap.toFixed(3)}s`);
+                  
+                  last_chunk_end_time = playTime + duration;
+
+                  if (msg.is_first) {
+                    document.getElementById('telemetryTTFA').textContent = `${((t_play_scheduled - startTime)/1000).toFixed(3)}s`;
+                  }
+                },
+                () => {
+                  t_decode_end = performance.now();
+                }
+              );
+              
+              valTTS.textContent = `Received chunk ${msg.index + 1}: "${msg.text}"`;
+            } 
+            else if (msg.type === "done") {
+              const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+              pipelineDuration.textContent = `${elapsed}s`;
+              
+              valInput.textContent = `"${msg.recognized_text || '(No speech detected)'}"`;
+              const searchSuffix = msg.online_telemetry ? ` | Search: ${msg.online_telemetry.search_status} (${msg.online_telemetry.search_latency_s}s, ${msg.online_telemetry.result_count} results)` : '';
+              valIntent.textContent = `${msg.is_command ? 'Robot Action' : 'Conversational AI'}${searchSuffix}`;
+              valResponse.textContent = `"${msg.response || ''}"`;
+              
+              const lat = msg.latencies || {};
+              document.getElementById('telemetrySTT').textContent = `${lat.stt_s || 0.0}s`;
+              document.getElementById('telemetryIntent').textContent = `${lat.intent_s || 0.0}s`;
+              document.getElementById('telemetryLLM').textContent = `${lat.llm_or_action_s || 0.0}s`;
+              document.getElementById('telemetryFirstAudio').textContent = `${lat.tts_first_chunk_s || 0.0}s`;
+              
+              ttsMeta.textContent = `${voiceId} @ ${speed}x [PROGRESSIVE WEBSOCKET]`;
+              ws.close();
+              setTimeout(fetchLLMStatus, 500);
+            }
+            else if (msg.type === "error") {
+              valTTS.textContent = `WebSocket Error: ${msg.message}`;
+              ws.close();
+            }
+          };
+          
+          ws.onerror = (err) => {
+            valTTS.textContent = `WebSocket error`;
+          };
+          return;
+        }
 
         const res = await fetch('/api/conversation/audio', {
           method: 'POST',
@@ -924,7 +1411,8 @@
         const data = await res.json();
         const isCmd = data.is_command;
         valInput.textContent = `"${data.recognized_text || '(No speech detected)'}"`;
-        valIntent.textContent = `${data.intent || 'CONVERSATION'} (${isCmd ? 'Robot Action' : 'Conversational AI'})`;
+        const searchSuffix = data.online_telemetry ? ` | Search: ${data.online_telemetry.search_status} (${data.online_telemetry.search_latency_s}s, ${data.online_telemetry.result_count} results)` : '';
+        valIntent.textContent = `${data.intent || 'CONVERSATION'} (${isCmd ? 'Robot Action' : 'Conversational AI'})${searchSuffix}`;
         valResponse.textContent = `"${data.response || ''}"`;
 
         const lat = data.latencies || {};

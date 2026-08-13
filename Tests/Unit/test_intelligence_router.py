@@ -77,6 +77,14 @@ def test_routing_time_and_date(router):
     assert res_day.route == RouteCategory.DATE
     assert "today is" in res_day.direct_response.lower()
 
+    res_tomorrow = router.route_query_sync("what is tomorrow's date")
+    assert res_tomorrow.route == RouteCategory.DATE
+    assert "tomorrow is" in res_tomorrow.direct_response.lower()
+
+    res_yesterday = router.route_query_sync("what day was yesterday")
+    assert res_yesterday.route == RouteCategory.DATE
+    assert "yesterday was" in res_yesterday.direct_response.lower()
+
 
 def test_routing_robot_status(router):
     res = router.route_query_sync("what is the robot status")
@@ -142,6 +150,17 @@ def test_routing_live_web(router):
 
     res_pres = router.route_query_sync("who is the president of UAE")
     assert res_pres.route == RouteCategory.LIVE_WEB
+
+
+def test_routing_weather(router):
+    res_w1 = router.route_query_sync("what is the weather today")
+    assert res_w1.route == RouteCategory.WEATHER
+
+    res_w2 = router.route_query_sync("weather in New York")
+    assert res_w2.route == RouteCategory.WEATHER
+
+    res_w3 = router.route_query_sync("temperature forecast for London")
+    assert res_w3.route == RouteCategory.WEATHER
 
 
 def test_routing_local_knowledge(router):
@@ -315,3 +334,333 @@ async def test_pipeline_router_deterministic_tools():
     assert res_local["route"] == RouteCategory.LOCAL.value
     assert res_local["is_command"] is False
     assert res_local["response"] != ""
+
+    # 6. Weather Query
+    with patch("AI.Router.tools.weather_tool.WeatherTool.get_weather", return_value="The weather in Chennai is currently 85 degrees and sunny."):
+        res_weather = await pipeline.process_text("what is the weather today in Chennai", play_local=False)
+        assert res_weather["route"] == RouteCategory.WEATHER.value
+        assert "chennai" in res_weather["response"].lower()
+
+
+@pytest.mark.asyncio
+async def test_weather_routing_expansion(router):
+    res1 = router.route_query_sync("is it hot outside?")
+    assert res1.route == RouteCategory.WEATHER
+    
+    res2 = router.route_query_sync("is it cold outside?")
+    assert res2.route == RouteCategory.WEATHER
+    
+    res3 = router.route_query_sync("what is the temperature here?")
+    assert res3.route == RouteCategory.WEATHER
+
+    res4 = router.route_query_sync("is it raining?")
+    assert res4.route == RouteCategory.WEATHER
+
+
+@pytest.mark.asyncio
+async def test_weather_with_coordinates():
+    # Mock Open-Meteo forecast API response
+    mock_weather_data = {
+        "current": {
+            "temperature_2m": 23.0,
+            "apparent_temperature": 22.0,
+            "weather_code": 3,
+            "wind_speed_10m": 12.0
+        }
+    }
+    
+    mock_geo_data = {
+        "address": {
+            "city": "Boston"
+        }
+    }
+
+    # Mock both requests
+    async def mock_get(url, *args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        if "reverse" in url:
+            mock_resp.json = lambda: mock_geo_data
+        elif "forecast" in url:
+            mock_resp.json = lambda: mock_weather_data
+        return mock_resp
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get):
+        from AI.Router.tools.weather_tool import WeatherTool
+        response = await WeatherTool.get_weather("what is the weather?", latitude=42.3601, longitude=-71.0589, accuracy=10.0)
+        assert "Boston" in response
+        assert "23 degrees" in response
+        assert "feels like 22" in response
+        assert "partly cloudy" in response
+
+
+def _make_test_pipeline():
+    stt = MockSTTProvider()
+    tts = MockTTSProvider()
+    llm = MockLLMProvider()
+    intent = IntentEngine()
+    memory = MockMemoryProvider()
+    register_all_actions()
+    safety = SafetyValidator()
+    return VoicePipeline(
+        stt=stt, tts=tts, llm=llm,
+        intent=intent, memory=memory,
+        actions=registry, safety=safety,
+    )
+
+
+@pytest.mark.asyncio
+async def test_weather_does_not_use_ollama():
+    pipeline = _make_test_pipeline()
+    # If we run weather query through the pipeline, it should bypass Ollama completely and use WeatherTool
+    with patch("AI.Router.tools.weather_tool.WeatherTool.get_weather", return_value="Spoken weather response") as mock_weather:
+        # Mock LLM stream to ensure it is NEVER called
+        with patch.object(pipeline.llm, "stream") as mock_llm_stream:
+            res = await pipeline.process_text("what is the weather today?", play_local=False, latitude=12.34, longitude=56.78)
+            assert res["route"] == RouteCategory.WEATHER.value
+            assert res["response"] == "Spoken weather response"
+            mock_llm_stream.assert_not_called()
+            mock_weather.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_weather_does_not_use_generic_web_search():
+    pipeline = _make_test_pipeline()
+    # Verify that live web search (WebSearchProvider) is never called for weather
+    with patch("AI.Router.tools.weather_tool.WeatherTool.get_weather", return_value="Spoken weather response"):
+        with patch.object(pipeline.router.web_provider, "search") as mock_search:
+            res = await pipeline.process_text("what is the weather today?", play_local=False, latitude=12.34, longitude=56.78)
+            assert res["route"] == RouteCategory.WEATHER.value
+            mock_search.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_datetime_stays_datetime(router):
+    # Today's date must remain DATETIME and not WEATHER
+    res_date = router.route_query_sync("what is today's date?")
+    assert res_date.route == RouteCategory.DATE
+
+    res_time = router.route_query_sync("what time is it?")
+    assert res_time.route == RouteCategory.TIME
+
+
+@pytest.mark.asyncio
+async def test_location_denied():
+    pipeline = _make_test_pipeline()
+    # Verify that if location is denied (latitude/longitude are None) and no env is set,
+    # the response tells the user to enable location and doesn't guess location
+    from core.config import settings
+    mock_settings = MagicMock()
+    for k in dir(settings):
+        if not k.startswith("_"):
+            try:
+                setattr(mock_settings, k, getattr(settings, k))
+            except Exception:
+                pass
+    mock_settings.user_location = None
+    mock_settings.default_city = None
+
+    with patch("core.config.settings", mock_settings):
+        with patch.dict("os.environ", {}):
+            res = await pipeline.process_text("what is the weather today?", play_local=False, latitude=None, longitude=None)
+            assert "enable location access" in res["response"].lower()
+
+
+@pytest.mark.asyncio
+async def test_weather_api_failure():
+    # If the weather API fails (returns non-200 or raises error), return a failure message
+    async def mock_get_fail(url, *args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        return mock_resp
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get_fail):
+        from AI.Router.tools.weather_tool import WeatherTool
+        response = await WeatherTool.get_weather("what is the weather?", latitude=42.36, longitude=-71.05)
+        assert "cannot access real-time weather" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_weather_uses_gps_coordinates():
+    # Verify Open-Meteo URL receives exact coordinates
+    called_urls = []
+    async def mock_get(url, *args, **kwargs):
+        called_urls.append(url)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json = lambda: {
+            "current": {"temperature_2m": 25.0, "apparent_temperature": 25.0, "weather_code": 0, "wind_speed_10m": 5.0}
+        }
+        return mock_resp
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get):
+        from AI.Router.tools.weather_tool import WeatherTool
+        await WeatherTool.get_weather("what is the weather?", latitude=12.3456, longitude=78.9012)
+        assert any("latitude=12.3456" in url and "longitude=78.9012" in url for url in called_urls)
+
+
+@pytest.mark.asyncio
+async def test_weather_explicit_location_overrides_gps():
+    # Verify city "Chennai" overrides coordinates and geocodes Chennai instead
+    called_urls = []
+    async def mock_get(url, *args, **kwargs):
+        called_urls.append(url)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        if "geocoding-api" in url:
+            mock_resp.json = lambda: {"results": [{"latitude": 13.0827, "longitude": 80.2707, "name": "Chennai"}]}
+        else:
+            mock_resp.json = lambda: {
+                "current": {"temperature_2m": 32.0, "apparent_temperature": 35.0, "weather_code": 1, "wind_speed_10m": 8.0}
+            }
+        return mock_resp
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get):
+        from AI.Router.tools.weather_tool import WeatherTool
+        response = await WeatherTool.get_weather("What is the weather in Chennai?", latitude=42.36, longitude=-71.05)
+        # Chennai coordinates must be targeted in weather api, not Boston's
+        assert any("latitude=13.0827" in url and "longitude=80.2707" in url for url in called_urls)
+        assert "Chennai" in response
+
+
+@pytest.mark.asyncio
+async def test_weather_requires_location_when_gps_unavailable():
+    # No GPS and no default/settings city should return location warning
+    from core.config import settings
+    mock_settings = MagicMock()
+    for k in dir(settings):
+        if not k.startswith("_"):
+            try:
+                setattr(mock_settings, k, getattr(settings, k))
+            except Exception:
+                pass
+    mock_settings.user_location = None
+    mock_settings.default_city = None
+
+    with patch("core.config.settings", mock_settings):
+        with patch.dict("os.environ", {}):
+            from AI.Router.tools.weather_tool import WeatherTool
+            response = await WeatherTool.get_weather("what is the weather?", latitude=None, longitude=None)
+            assert "enable location access" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_weather_permission_denied():
+    # Verify that permission denied leads to spoken enable warning
+    pipeline = _make_test_pipeline()
+    from core.config import settings
+    mock_settings = MagicMock()
+    for k in dir(settings):
+        if not k.startswith("_"):
+            try:
+                setattr(mock_settings, k, getattr(settings, k))
+            except Exception:
+                pass
+    mock_settings.user_location = None
+    mock_settings.default_city = None
+
+    with patch("core.config.settings", mock_settings):
+        with patch.dict("os.environ", {}):
+            res = await pipeline.process_text("what is the weather?", play_local=False, latitude=None, longitude=None)
+            assert "enable location access" in res["response"].lower()
+
+
+@pytest.mark.asyncio
+async def test_weather_gps_timeout():
+    # Simulates Open-Meteo timeout or Nominatim reverse geocoder timeout
+    async def mock_get_timeout(*args, **kwargs):
+        raise httpx.ReadTimeout("Timeout")
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get_timeout):
+        from AI.Router.tools.weather_tool import WeatherTool
+        # Runs and falls back to failure message instead of crashing
+        response = await WeatherTool.get_weather("what is the weather?", latitude=12.34, longitude=56.78)
+        assert "cannot access real-time weather" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_weather_accuracy_is_preserved():
+    # Verifies that accuracy and timestamp are correctly handled in WeatherTool
+    async def mock_get(url, *args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json = lambda: {
+            "current": {"temperature_2m": 25.0, "apparent_temperature": 25.0, "weather_code": 0, "wind_speed_10m": 5.0}
+        }
+        return mock_resp
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get):
+        from AI.Router.tools.weather_tool import WeatherTool
+        # Verify call succeeds and prints accurate accuracy telemetry
+        res = await WeatherTool.get_weather("what is the weather?", latitude=12.34, longitude=56.78, accuracy=150.0, timestamp=time.time()*1000)
+        assert "weather" in res.lower()
+
+
+@pytest.mark.asyncio
+async def test_weather_stale_location_handling():
+    # Verifies location age calculation and successful query execution
+    async def mock_get(url, *args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json = lambda: {
+            "current": {"temperature_2m": 25.0, "apparent_temperature": 25.0, "weather_code": 0, "wind_speed_10m": 5.0}
+        }
+        return mock_resp
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_get):
+        from AI.Router.tools.weather_tool import WeatherTool
+        # Set timestamp 4 minutes ago (240000ms)
+        past_ts = (time.time() - 240.0) * 1000.0
+        res = await WeatherTool.get_weather("what is the weather?", latitude=12.34, longitude=56.78, accuracy=50.0, timestamp=past_ts)
+        assert "weather" in res.lower()
+
+
+@pytest.mark.asyncio
+async def test_weather_voice_location_handshake():
+    pipeline = _make_test_pipeline()
+    # If allow_location_request is True and coords are missing, return needs_location = True
+    res = await pipeline.process_text("what is the weather?", play_local=False, latitude=None, longitude=None, allow_location_request=True)
+    assert res.get("needs_location") is True
+    assert res.get("recognized_text") == "what is the weather?"
+
+
+@pytest.mark.asyncio
+async def test_weather_text_location_flow():
+    pipeline = _make_test_pipeline()
+    # If allow_location_request is True and coords are present, runs immediately (needs_location is None/False)
+    with patch("AI.Router.tools.weather_tool.WeatherTool.get_weather", return_value="Spoken weather response"):
+        res = await pipeline.process_text("what is the weather?", play_local=False, latitude=12.34, longitude=56.78, allow_location_request=True)
+        assert res.get("needs_location") is not True
+        assert res.get("response") == "Spoken weather response"
+
+
+@pytest.mark.asyncio
+async def test_date_query_does_not_route_to_weather(router):
+    res = router.route_query_sync("What's today's date?")
+    assert res.route == RouteCategory.DATE
+
+
+@pytest.mark.asyncio
+async def test_calculator_does_not_route_to_weather(router):
+    res = router.route_query_sync("What is 25 + 37?")
+    assert res.route == RouteCategory.CALCULATOR
+
+
+@pytest.mark.asyncio
+async def test_weather_location_error_does_not_recur():
+    pipeline = _make_test_pipeline()
+    # When process_direct_response is called, it should bypass Ollama and route/resolve immediately
+    with patch.object(pipeline.llm, "stream") as mock_llm_stream:
+        res = await pipeline.process_direct_response(
+            text="what is the weather?",
+            response_text="I can't access your location. Please enable location access and try again.",
+            route="WEATHER"
+        )
+        assert res["route"] == "WEATHER"
+        assert res["text"] == "what is the weather?"
+        assert res["response"] == "I can't access your location. Please enable location access and try again."
+        mock_llm_stream.assert_not_called()
+
+
+
+

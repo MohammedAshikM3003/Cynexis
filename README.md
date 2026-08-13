@@ -159,7 +159,7 @@ npm run dev
 
 | Name             | Role        |
 | ---------------- | ----------- |
-| MOhammed Ashik M | 73152313074 |
+| Mohammed Ashik M | 73152313074 |
 | Ravinder singh   | 73152313095 |
 | Mogeswaran P     | 73152313072 |
 

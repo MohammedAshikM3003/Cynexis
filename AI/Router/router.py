@@ -14,6 +14,7 @@ from AI.Router.models import RouteCategory, RoutingResult
 from AI.Router.tools.datetime_tool import DateTimeTool
 from AI.Router.tools.calculator_tool import SafeCalculatorTool
 from AI.Router.tools.robot_status_tool import RobotStatusTool
+from AI.Router.tools.weather_tool import WeatherTool
 from AI.Router.knowledge import ProjectKnowledgeEngine
 from AI.Router.cache import InformationCache, information_cache
 from AI.Router.providers.base import LiveInformationProvider
@@ -86,13 +87,13 @@ class IntelligenceRouter:
 
         # 2. Time & Date Queries
         time_patterns = [
-            r"\b(what time is it|current time|what is the time|tell me the time|time now)\b",
+            r"\b(time is it|current time|what is the time|tell me the time|time now)\b",
             r"\bwhat time\b.*\b(in|of)\s+[a-z]+",
         ]
         date_patterns = [
-            r"\b(what date is today|what is today'?s date|today'?s date|what date is it|current date)\b",
-            r"\b(what day is today|what day is it|which day is today)\b",
-            r"\b(what year is it|current year|what is the current year)\b",
+            r"\b(what date|today'?s date|tomorrow'?s date|yesterday'?s date|what'?s the date|what is the date|current date)\b",
+            r"\b(what day|which day|day is it|day will it be|day was yesterday|day is tomorrow)\b",
+            r"\b(what year|current year|what is the current year|what month|current month)\b",
         ]
         if any(re.search(p, cleaned_lower) for p in time_patterns):
             response = DateTimeTool.process(cleaned)
@@ -170,20 +171,75 @@ class IntelligenceRouter:
                 handled_locally=True,
             )
 
+        # 6.5 Weather Queries
+        weather_keywords = [
+            "weather", "temperature", "forecast", "raining", "humidity", "will it rain", "rain",
+            "reign", "reigning",
+            "wind speed", "hot outside", "cold outside", "temperature here", "is it raining", 
+            "weather tomorrow", "weather tonight", "how hot is it", "how cold is it", 
+            "temperature outside", "weather outside", "weather here", "weather at my location"
+        ]
+        if any(kw in cleaned_lower for kw in weather_keywords):
+            return RoutingResult(
+                route=RouteCategory.WEATHER,
+                confidence=0.98,
+                reason="Real-time weather query",
+                handled_locally=False,
+                requires_llm_synthesis=False,
+            )
+
+        # 6.6 Location Queries
+        location_patterns = [
+            r"\b(where am i|what is my location|my current location|get my location|where is this|what is this place)\b"
+        ]
+        if any(re.search(p, cleaned_lower) for p in location_patterns):
+            return RoutingResult(
+                route=RouteCategory.LOCATION,
+                confidence=0.98,
+                reason="Current location coordinates query",
+                handled_locally=False,
+                requires_llm_synthesis=False,
+            )
+
         # 7. Live / Temporal Web Queries
         live_indicators = [
+            # ── Temporal events ────────────────────────────────────────────────
             r"\bwhat happened (today|yesterday|recently|this week|in the world)\b",
             r"\bwhat is happening (today|now|around the world)\b",
+            r"\bwhat'?s happening (today|now|around the world|in the world)\b",
+            r"\bwhat happened recently\b",
+            r"\brecent (news|events|updates|developments|headlines)\b",
             r"\btoday'?s (current affairs|news|weather|match|headlines|events|updates)\b",
             r"\blatest (ai news|news|technology news|tech news|updates|headlines|developments|trends)\b",
             r"\b(what happened in|latest news about|news in|news about|breaking news|top stories)\s+[a-z0-9\s]+",
+            r"\bis there any (news|update|information) (about|on|regarding)\b",
+            r"\bany (news|updates|information) (about|on|regarding)\b",
+            # ── "What is the latest / current X" ───────────────────────────────
+            r"\bwhat is the latest\b",
+            r"\bwhat'?s the latest\b",
+            r"\bwhat is the current (news|status|situation|update|score|price|rate|version)\b",
+            r"\bwhat'?s the current (news|status|situation|update|score|price|rate|version)\b",
+            # ── Status / situation ──────────────────────────────────────────────
+            r"\b(current status of|status of|what is happening with|what'?s happening with|what is going on with|what'?s going on with)\b",
+            r"\b(latest on|update on|news on|situation in|situation with)\s+[a-z0-9\s]+",
+            # ── Latest version / release ────────────────────────────────────────
+            r"\b(latest version of|current version of|newest version of|most recent version of)\b",
+            r"\b(latest release|newest release|most recent update)\b",
+            r"\bwhat'?s new (in|with|for)\b",
+            # ── People / opinion ───────────────────────────────────────────────
+            r"\bwhat (are people|is everyone|is the world) (saying|thinking|talking) about\b",
+            r"\bpublic (opinion|reaction|response) (on|to|about)\b",
+            # ── Current leaders, CEOs, presidents ──────────────────────────────
             r"\b(who is|who's|name of)\s+(the\s+)?(current\s+)?(chief minister|cheif minister|cm|prime minister|pm|president|governor|ceo|mayor|chancellor|leader|captain)\b",
             r"\b(chief minister|cheif minister|cm|prime minister|pm|president|governor|ceo|mayor)\s+of\b",
-            r"\b(who won|match score|election score|match result)\b",
-            r"\b(current|today'?s)\s+(weather|temperature|forecast|price|stock price|gold price|score|news|affairs)\b",
-            r"\b(weather|temperature|forecast)\s+(in|of|at|for)\s+[a-z0-9\s]+",
-            r"\b(how('s| is) the weather|what('s| is) the weather)\b",
-            r"\bweather today\b",
+            # ── Sports & winners ───────────────────────────────────────────────
+            r"\b(who won|match score|election score|match result|game result|score of)\b",
+            r"\b(who is winning|who won the|which team won)\b",
+            # ── Price / Stock / Crypto ─────────────────────────────────────────
+            r"\b(current\s+)?(price|stock price|gold price|exchange rate|market cap)\s+of\s+[a-z0-9\s]+",
+            r"\b(how much (is|does|did|will))\s+[a-z0-9\s]+\b",
+            r"\b(value of)\s+[a-z0-9\s]+\b",
+            r"\b(bitcoin|ethereum|solana|crypto|stock|shares|nasdaq|sensex|nifty)\s+(price|value|rate|today)\b",
         ]
         if any(re.search(p, cleaned_lower) for p in live_indicators):
             return RoutingResult(
@@ -216,19 +272,52 @@ class IntelligenceRouter:
             requires_llm_synthesis=True,
         )
 
-    async def route_and_resolve(self, text: str) -> RoutingResult:
+    async def route_and_resolve(self, text: str, latitude: Optional[float] = None, longitude: Optional[float] = None, accuracy: Optional[float] = None, timestamp: Optional[float] = None) -> RoutingResult:
         """
         Complete asynchronous routing and retrieval resolution.
         If the query requires live information, fetches and prepares sanitized context.
         """
+        import time
         result = self.route_query_sync(text)
+
+        # If it's a weather query, resolve it via WeatherTool
+        if result.route == RouteCategory.WEATHER:
+            weather_response = await WeatherTool.get_weather(
+                text, latitude=latitude, longitude=longitude, accuracy=accuracy, timestamp=timestamp
+            )
+            result.direct_response = weather_response
+            result.handled_locally = False
+            return result
+
+        # If it's a location query, resolve it via LocationTool
+        if result.route == RouteCategory.LOCATION:
+            from AI.Router.tools.location_tool import LocationTool
+            location_response = await LocationTool.get_location(
+                latitude=latitude, longitude=longitude
+            )
+            result.direct_response = location_response
+            result.handled_locally = False
+            return result
 
         # If it's a live web query, perform caching and rate-limited retrieval
         if result.route == RouteCategory.LIVE_WEB:
+            telemetry = {
+                "online_intent": True,
+                "search_start_ts": time.time(),
+                "search_latency_s": 0.0,
+                "result_count": 0,
+                "search_status": "PENDING",
+                "fallback_active": False,
+                "error_message": None
+            }
+            # Attach telemetry directly (will be mapped in pipeline)
+            result.online_telemetry = telemetry
+
             # 1. Check cache first
             cached_context = await self.cache.get(text)
             if cached_context:
                 result.augmented_context = cached_context
+                telemetry["search_status"] = "CACHE_HIT"
                 return result
 
             # 2. Check rate limiter & provider availability
@@ -236,15 +325,30 @@ class IntelligenceRouter:
                 result.direct_response = "Live web search is currently disabled in configuration."
                 result.requires_llm_synthesis = False
                 result.handled_locally = True
+                telemetry["search_status"] = "DISABLED"
                 return result
-
-            can_request = await self.cache.can_request()
-            if not can_request:
-                log.info("Throttling active — fetching shortly or using offline notice")
 
             # 3. Perform external search with safety boundaries
             await self.cache.record_request()
-            search_results = await self.web_provider.search(text, max_results=settings.web_search_max_results)
+            t0 = time.time()
+            try:
+                search_results = await self.web_provider.search(text, max_results=settings.web_search_max_results)
+                elapsed = time.time() - t0
+                telemetry["search_latency_s"] = round(elapsed, 3)
+                telemetry["result_count"] = len(search_results)
+                if search_results:
+                    telemetry["search_status"] = "SUCCESS"
+                else:
+                    telemetry["search_status"] = "NO_RESULTS"
+                    telemetry["fallback_active"] = True
+            except Exception as e:
+                elapsed = time.time() - t0
+                telemetry["search_latency_s"] = round(elapsed, 3)
+                telemetry["search_status"] = "ERROR"
+                telemetry["error_message"] = str(e)
+                telemetry["fallback_active"] = True
+                search_results = []
+                log.error(f"Error resolving live query search: {e}")
 
             if not search_results:
                 # Offline-first fallback
@@ -265,8 +369,9 @@ class IntelligenceRouter:
                 f"{snippets_text}\n"
                 "--- END REAL-TIME INFORMATION ---\n"
                 f"User Question: {text}\n"
-                "Based directly on the real-time information provided above, tell the user the actual news headlines, weather, or facts in 1-2 concise, clear spoken sentences. "
-                "Do NOT say 'you can search for' or 'information can be found at' or refer to websites. Directly state the actual facts and news stories to the user."
+                "Based directly on the real-time information provided above, state the actual news headlines, "
+                "weather, or facts to the user in 1–3 concise spoken sentences. "
+                "Do NOT say 'you can search for' or refer to websites. Directly state the facts."
             )
 
             # Store in cache

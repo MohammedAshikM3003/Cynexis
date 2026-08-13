@@ -23,6 +23,10 @@ class TextConversationRequest(BaseModel):
     voice: Optional[str] = Field(default=None, description="Optional override voice ID")
     speed: Optional[float] = Field(default=None, ge=MIN_TTS_SPEED, le=MAX_TTS_SPEED, description="Speech speed")
     play_local: Optional[bool] = Field(default=None, description="Whether to play audio via speaker")
+    latitude: Optional[float] = Field(default=None, description="Client latitude")
+    longitude: Optional[float] = Field(default=None, description="Client longitude")
+    accuracy: Optional[float] = Field(default=None, description="Client location accuracy in meters")
+    timestamp: Optional[float] = Field(default=None, description="Client location timestamp (ms since epoch)")
 
 
 class AudioConversationRequest(BaseModel):
@@ -30,6 +34,10 @@ class AudioConversationRequest(BaseModel):
     voice: Optional[str] = Field(default=None, description="Optional override voice ID")
     speed: Optional[float] = Field(default=None, ge=MIN_TTS_SPEED, le=MAX_TTS_SPEED, description="Speech speed")
     play_local: Optional[bool] = Field(default=None, description="Whether to play audio via speaker")
+    latitude: Optional[float] = Field(default=None, description="Client latitude")
+    longitude: Optional[float] = Field(default=None, description="Client longitude")
+    accuracy: Optional[float] = Field(default=None, description="Client location accuracy in meters")
+    timestamp: Optional[float] = Field(default=None, description="Client location timestamp (ms since epoch)")
 
 
 @router.post("/text")
@@ -66,6 +74,11 @@ async def process_text_conversation(payload: TextConversationRequest, request: R
             voice=voice_id,
             speed=payload.speed,
             play_local=payload.play_local,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            accuracy=payload.accuracy,
+            timestamp=payload.timestamp,
+            allow_location_request=False,
         )
 
         audio_bytes = pipeline_result.get("audio_bytes", b"")
@@ -85,6 +98,7 @@ async def process_text_conversation(payload: TextConversationRequest, request: R
             "tts_provider": pipeline_result.get("tts_provider", "kokoro"),
             "duration_s": round(duration_s, 2),
             "latencies": pipeline_result.get("latencies", {}),
+            "online_telemetry": pipeline_result.get("online_telemetry"),
             "audio_base64": audio_b64,
             "error": pipeline_result.get("error"),
         }
@@ -131,6 +145,11 @@ async def process_audio_conversation(payload: AudioConversationRequest, request:
             voice=voice_id,
             speed=payload.speed,
             play_local=payload.play_local,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            accuracy=payload.accuracy,
+            timestamp=payload.timestamp,
+            allow_location_request=False,
         )
 
         out_audio = pipeline_result.get("audio_bytes", b"")
@@ -150,6 +169,7 @@ async def process_audio_conversation(payload: AudioConversationRequest, request:
             "tts_provider": pipeline_result.get("tts_provider", "kokoro"),
             "duration_s": round(duration_s, 2),
             "latencies": pipeline_result.get("latencies", {}),
+            "online_telemetry": pipeline_result.get("online_telemetry"),
             "audio_base64": audio_b64,
             "error": pipeline_result.get("error"),
         }
@@ -193,12 +213,24 @@ async def get_conversation_history(request: Request, limit: int = 10):
 
 llm_router = APIRouter(prefix="/llm", tags=["LLM"])
 
+# Time-based caches to prevent high-frequency Ollama polling from thrashing the Python GIL
+_llm_status_cache = None
+_llm_status_cache_time = 0.0
+
+_llm_model_cache = None
+_llm_model_cache_time = 0.0
+
 
 @llm_router.get("/status")
 async def get_llm_status(request: Request):
     """
     Return the current LLM provider status and last-inference telemetry.
     """
+    global _llm_status_cache, _llm_status_cache_time
+    now = time.time()
+    if _llm_status_cache is not None and now - _llm_status_cache_time < 5.0:
+        return _llm_status_cache
+
     pipeline = getattr(request.app.state, "pipeline", None)
     if not pipeline or not pipeline.llm:
         return {
@@ -217,7 +249,7 @@ async def get_llm_status(request: Request):
     except Exception as e:
         health = {"ok": False, "error": str(e)}
 
-    return {
+    result = {
         "provider": provider_name,
         "loaded": llm.is_loaded(),
         "status": health.get("status", "UNKNOWN"),
@@ -226,6 +258,10 @@ async def get_llm_status(request: Request):
         "health": health,
         "telemetry": telemetry,
     }
+    
+    _llm_status_cache = result
+    _llm_status_cache_time = now
+    return result
 
 
 @llm_router.get("/model")
@@ -233,6 +269,11 @@ async def get_llm_model(request: Request):
     """
     Return information about the currently configured LLM model.
     """
+    global _llm_model_cache, _llm_model_cache_time
+    now = time.time()
+    if _llm_model_cache is not None and now - _llm_model_cache_time < 10.0:
+        return _llm_model_cache
+
     from core.config import settings
 
     pipeline = getattr(request.app.state, "pipeline", None)
@@ -241,6 +282,7 @@ async def get_llm_model(request: Request):
         model_name = pipeline.llm._model
 
     # Try to get model details from Ollama
+    result_data = None
     try:
         import httpx
         base_url = getattr(settings, "ollama_base_url", "http://localhost:11434")
@@ -251,7 +293,7 @@ async def get_llm_model(request: Request):
                 for m in models:
                     if m.get("name", "").startswith(model_name.split(":")[0]):
                         details = m.get("details", {})
-                        return {
+                        result_data = {
                             "model": m.get("name"),
                             "size_bytes": m.get("size"),
                             "parameter_size": details.get("parameter_size"),
@@ -260,10 +302,16 @@ async def get_llm_model(request: Request):
                             "family": details.get("family"),
                             "capabilities": m.get("capabilities", []),
                         }
+                        break
     except Exception as e:
         log.warning(f"Could not fetch model details from Ollama: {e}")
 
-    return {"model": model_name, "status": "details_unavailable"}
+    if result_data is None:
+        result_data = {"model": model_name, "status": "details_unavailable"}
+
+    _llm_model_cache = result_data
+    _llm_model_cache_time = now
+    return result_data
 
 
 class LLMTestRequest(BaseModel):

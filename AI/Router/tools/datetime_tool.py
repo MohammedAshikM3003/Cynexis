@@ -92,18 +92,37 @@ class DateTimeTool:
 
     @classmethod
     def get_date(cls, query: str = "") -> str:
-        """Return formatted current date."""
+        """Return formatted current date, yesterday's date, or tomorrow's date."""
+        q = query.lower()
         now = datetime.now()
-        # Format: "Wednesday, August 12, 2026"
-        formatted_date = now.strftime("%A, %B %d, %Y")
-        return f"Today is {formatted_date}."
+        if "tomorrow" in q:
+            target = now + timedelta(days=1)
+            formatted_date = target.strftime("%A, %B %d, %Y")
+            return f"Tomorrow is {formatted_date}."
+        elif "yesterday" in q:
+            target = now - timedelta(days=1)
+            formatted_date = target.strftime("%A, %B %d, %Y")
+            return f"Yesterday was {formatted_date}."
+        else:
+            formatted_date = now.strftime("%A, %B %d, %Y")
+            return f"Today is {formatted_date}."
 
     @classmethod
     def get_day(cls, query: str = "") -> str:
-        """Return the current day of the week."""
+        """Return the current day of the week, yesterday's day, or tomorrow's day."""
+        q = query.lower()
         now = datetime.now()
-        day_name = now.strftime("%A")
-        return f"Today is {day_name}."
+        if "tomorrow" in q:
+            target = now + timedelta(days=1)
+            day_name = target.strftime("%A")
+            return f"Tomorrow will be {day_name}."
+        elif "yesterday" in q:
+            target = now - timedelta(days=1)
+            day_name = target.strftime("%A")
+            return f"Yesterday was {day_name}."
+        else:
+            day_name = now.strftime("%A")
+            return f"Today is {day_name}."
 
     @classmethod
     def get_month(cls, query: str = "") -> str:
@@ -122,13 +141,13 @@ class DateTimeTool:
     def process(cls, query: str) -> str:
         """Process any time/date natural language query deterministically."""
         q = query.lower()
-        if any(w in q for w in ["what day", "which day", "day is today", "day is it"]):
+        if any(w in q for w in ["what day", "which day", "day is today", "day is it", "day will it be", "day was yesterday", "day is tomorrow"]):
             return cls.get_day(query)
         if any(w in q for w in ["what month", "which month", "current month"]):
             return cls.get_month(query)
         if any(w in q for w in ["what year", "which year", "current year"]):
             return cls.get_year(query)
-        if any(w in q for w in ["what date", "today's date", "date today", "date is today", "what's the date", "what is the date"]):
+        if any(w in q for w in ["what date", "today's date", "date today", "date is today", "what's the date", "what is the date", "tomorrow's date", "yesterday's date"]):
             return cls.get_date(query)
         if any(w in q for w in ["what time", "current time", "time is it", "time now", "tell me the time", "time in", "time of"]):
             return cls.get_time(query)

@@ -84,7 +84,8 @@ class IntentEngine:
 
         for patterns, action in INTENT_PATTERNS:
             for pattern in patterns:
-                if pattern in text_lower:
+                # Use word boundaries to prevent substring collisions (e.g. "yes" in "yesterday")
+                if re.search(r"\b" + re.escape(pattern) + r"\b", text_lower):
                     log.info(f"Intent: '{text}' -> {action.value} (matched: '{pattern}')")
                     return action
 

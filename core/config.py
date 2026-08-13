@@ -4,6 +4,7 @@ Loads settings from .env file using Pydantic Settings.
 """
 
 from pathlib import Path
+from typing import Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -62,12 +63,12 @@ class CynexisSettings(BaseSettings):
     # TTS (Text-to-Speech)
     tts_provider: str = Field(default="kokoro")
     tts_voice: str = Field(default="am_michael")
-    tts_speed: float = Field(default=1.2)              # 1.2x = 15% faster synth, natural quality
+    tts_speed: float = Field(default=1.0)              # 1.0x = natural human speech pacing
     tts_enabled: bool = Field(default=True)
     tts_play_local: bool = Field(default=True)
     tts_save_logs: bool = Field(default=False)
     tts_log_path: str = Field(default="./Logs/TTS")
-    tts_onnx_intra_threads: int = Field(default=6)
+    tts_onnx_intra_threads: int = Field(default=8)
 
     # STT (Speech-to-Text)
     stt_provider: str = Field(default="mock")
@@ -78,7 +79,7 @@ class CynexisSettings(BaseSettings):
     stt_whisper_model: str = Field(default="base.en")
     stt_whisper_device: str = Field(default="cpu")
     stt_whisper_compute_type: str = Field(default="float32")
-    stt_whisper_cpu_threads: int = Field(default=4)
+    stt_whisper_cpu_threads: int = Field(default=8)
     stt_whisper_beam_size: int = Field(default=1)
     stt_whisper_vad_filter: bool = Field(default=False)
 
@@ -97,21 +98,22 @@ class CynexisSettings(BaseSettings):
     # LLM
     llm_provider: str = Field(default="mock")           # "mock" | "ollama"
     ollama_base_url: str = Field(default="http://localhost:11434")
-    ollama_model: str = Field(default="llama3:8b")
-    ollama_temperature: float = Field(default=0.4)      # Lower = faster + more concise
-    ollama_max_tokens: int = Field(default=80)           # 80 tokens ≈ 2-3 spoken sentences
+    ollama_model: str = Field(default="llama3.2:3b")
+    ollama_temperature: float = Field(default=0.2)      # Lower = faster + more concise
+    ollama_max_tokens: int = Field(default=100)          # 100 tokens max for short complete sentences
     ollama_timeout_s: float = Field(default=30.0)
     ollama_context_window: int = Field(default=8)       # conversation turns to include
-    ollama_num_thread: int = Field(default=6)
-    ollama_num_ctx: int = Field(default=1024)
+    ollama_num_thread: int = Field(default=8)
+    ollama_num_ctx: int = Field(default=512)
 
     # Intelligence Router & Live Information
     router_enabled: bool = Field(default=True)
     web_search_enabled: bool = Field(default=True)
-    web_search_timeout_s: float = Field(default=6.0)
-    web_search_max_results: int = Field(default=3)
+    web_search_timeout_s: float = Field(default=3.0)
+    web_search_max_results: int = Field(default=2)
     web_cache_ttl_s: int = Field(default=900)  # 15 minutes
     web_min_request_interval_s: float = Field(default=1.0)  # Throttling between web queries
+    user_location: Optional[str] = Field(default=None)
 
     model_config = {
         "env_file": str(PROJECT_ROOT / ".env"),

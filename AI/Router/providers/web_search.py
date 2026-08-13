@@ -146,7 +146,8 @@ class WebSearchProvider(LiveInformationProvider):
 
             if response.status_code != 200:
                 lite_url = "https://lite.duckduckgo.com/lite/"
-                response = await client.get(lite_url, params={"q": search_query}, headers=headers)
+                # Correct POST request for DuckDuckGo Lite search form submission
+                response = await client.post(lite_url, data={"q": search_query}, headers=headers)
 
             if response.status_code in (200, 202):
                 html_content = response.text
@@ -168,6 +169,22 @@ class WebSearchProvider(LiveInformationProvider):
                 return results
         except Exception as e:
             log.debug(f"DuckDuckGo search attempt failed: {e}")
+        return []
+
+    async def _search_ddg_api(self, search_query: str, client: httpx.AsyncClient) -> list[SearchResult]:
+        """Fetch facts and answers using the free public DuckDuckGo Instant Answer API."""
+        try:
+            url = "https://api.duckduckgo.com/"
+            resp = await client.get(url, params={"q": search_query, "format": "json", "no_html": 1}, timeout=1.5)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = []
+                abstract = data.get("AbstractText", "")
+                if abstract:
+                    results.append(SearchResult(title=data.get("Heading", "Abstract"), snippet=self.sanitize_snippet(abstract), source="ddg_api"))
+                return results
+        except Exception as e:
+            log.debug(f"DuckDuckGo API fallback failed: {e}")
         return []
 
     async def _search_wikipedia(self, search_query: str, client: httpx.AsyncClient, max_results: int) -> list[SearchResult]:
@@ -200,6 +217,7 @@ class WebSearchProvider(LiveInformationProvider):
         """
         Execute an async search for current information or live news.
         """
+        import asyncio
         if not self.is_available():
             log.info("Web search is disabled in settings.")
             return []
@@ -209,30 +227,50 @@ class WebSearchProvider(LiveInformationProvider):
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True) as client:
-                # 1. If it's a news query, fetch fresh live news headlines first
-                if self.is_news_query(clean_query):
-                    news_results = await self._fetch_live_news(clean_query, client, max_results)
-                    if news_results:
-                        return news_results
-
+            # Concurrently execute all search components with tight 1.5s individual timeouts.
+            # An outer 2.5 s hard deadline ensures the pipeline is never stalled by a slow
+            # provider — whatever results arrived by then are used; the rest are discarded.
+            _SEARCH_OUTER_TIMEOUT_S = 2.5
+            async with httpx.AsyncClient(timeout=1.5, follow_redirects=True) as client:
+                is_news = self.is_news_query(clean_query)
                 search_query = self.optimize_search_query(clean_query)
-                log.info(f"Optimized search query: '{clean_query}' -> '{search_query}'")
+                log.info(f"Optimized search query: '{clean_query}' -> '{search_query}' (news_query={is_news})")
 
-                # 2. Primary Web: DuckDuckGo search
-                results = await self._search_duckduckgo(search_query, client, max_results)
-                if results:
-                    log.info(f"Web search via DuckDuckGo returned {len(results)} sanitized results")
-                    return results
+                tasks = [
+                    asyncio.wait_for(self._search_duckduckgo(search_query, client, max_results), timeout=1.0),
+                    self._search_ddg_api(search_query, client)
+                ]
+                if is_news:
+                    tasks.append(self._fetch_live_news(clean_query, client, max_results))
 
-                # 3. Fallback: Wikipedia Knowledge Search
-                results = await self._search_wikipedia(search_query, client, max_results)
-                if results:
-                    log.info(f"Web search fallback via Wikipedia returned {len(results)} sanitized results")
-                    return results
+                try:
+                    completed = await asyncio.wait_for(
+                        asyncio.gather(*tasks, return_exceptions=True),
+                        timeout=_SEARCH_OUTER_TIMEOUT_S,
+                    )
+                except asyncio.TimeoutError:
+                    log.warning(
+                        f"Web search timed out after {_SEARCH_OUTER_TIMEOUT_S}s — "
+                        "returning partial/empty results"
+                    )
+                    # Return empty; the router's fallback will speak the offline message.
+                    return []
 
-        except httpx.TimeoutException:
-            log.warning(f"Web search timed out after {self.timeout_s}s for query: '{clean_query}'")
+                results_ddg = completed[0] if not isinstance(completed[0], Exception) else []
+                results_api = completed[1] if not isinstance(completed[1], Exception) else []
+                results_news = completed[2] if is_news and not isinstance(completed[2], Exception) else []
+
+                # Return the highest quality source resolved
+                if is_news and results_news:
+                    log.info(f"Concurrently fetched live news headlines: {len(results_news)}")
+                    return results_news
+                if results_ddg:
+                    log.info(f"Concurrently fetched DuckDuckGo results: {len(results_ddg)}")
+                    return results_ddg
+                if results_api:
+                    log.info(f"Concurrently fetched DuckDuckGo API facts: {len(results_api)}")
+                    return results_api
+
         except Exception as e:
             log.warning(f"Web search encountered error: {e}")
 

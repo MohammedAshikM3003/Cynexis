@@ -42,7 +42,7 @@ class KokoroTTSProvider(TTSProvider):
     """
 
     # ONNX model file paths
-    _ONNX_MODEL = Path(PROJECT_ROOT) / "AI Models" / "Kokoro" / "kokoro-v1.0.fp16-gpu.onnx"
+    _ONNX_MODEL = Path(PROJECT_ROOT) / "AI Models" / "Kokoro" / "kokoro-v1.0.onnx"
     _ONNX_VOICES = Path(PROJECT_ROOT) / "AI Models" / "Kokoro" / "voices-v1.0.bin"
 
     def __init__(self, audio_output: Optional[AudioOutput] = None, lang_code: str = "a"):

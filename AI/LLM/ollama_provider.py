@@ -58,8 +58,10 @@ class OllamaLLMProvider(LLMProvider):
             settings, "ollama_temperature", 0.7
         )
         self._max_tokens: int = max_tokens or getattr(
-            settings, "ollama_max_tokens", 150
+            settings, "ollama_max_tokens", 100
         )
+        if self._max_tokens < 100:
+            self._max_tokens = 100
         self._timeout_s: float = timeout_s or getattr(
             settings, "ollama_timeout_s", 30.0
         )
@@ -80,6 +82,8 @@ class OllamaLLMProvider(LLMProvider):
             "tokens_generated": 0,
             "tokens_per_sec": None,
             "ttfa_s": None,
+            "history_messages": 0,
+            "prompt_chars": 0,
         }
         log.info(
             f"OllamaLLMProvider initialized: model={self._model} url={self._base_url}"
@@ -158,8 +162,8 @@ class OllamaLLMProvider(LLMProvider):
                 options={
                     "temperature": self._temperature,
                     "num_predict": self._max_tokens,
-                    "num_thread": getattr(settings, "ollama_num_thread", 6),
-                    "num_ctx": getattr(settings, "ollama_num_ctx", 1024),
+                    "num_thread": getattr(settings, "ollama_num_thread", 8) or 8,
+                    "num_ctx": getattr(settings, "ollama_num_ctx", 512) or 512,
                 },
             )
             async for chunk in stream:
@@ -209,6 +213,22 @@ class OllamaLLMProvider(LLMProvider):
                     ),
                 }
             )
+
+            # Print Local Telemetry block
+            hist_msgs = self._telemetry.get("history_messages", 0)
+            prompt_ch = self._telemetry.get("prompt_chars", 0)
+            ttft_s = round(ttft, 3) if ttft is not None else 0.0
+            gen_s = round(elapsed, 3)
+            print(f"\n============================================================\n"
+                  f"[LOCAL TELEMETRY]\n"
+                  f"ollama=true\n"
+                  f"generation_calls=1\n"
+                  f"history_messages={hist_msgs}\n"
+                  f"prompt_chars={prompt_ch}\n"
+                  f"ttft={ttft_s} s\n"
+                  f"generation_time={gen_s} s\n"
+                  f"============================================================\n")
+
             log.info(
                 f"Ollama stream complete: {token_count} tokens in {elapsed:.2f}s "
                 f"(TTFT={ttft:.3f}s)" if ttft else
@@ -297,4 +317,26 @@ class OllamaLLMProvider(LLMProvider):
 
         # Append the current user turn
         messages.append({"role": "user", "content": prompt})
+
+        # Calculate and log telemetry stats
+        history_messages = len(conversation_history)
+        history_characters = sum(len(m["content"]) for m in conversation_history)
+        system_prompt_characters = len(messages[0]["content"])
+        user_prompt_characters = len(prompt)
+        total_prompt_characters = sum(len(m["content"]) for m in messages)
+
+        self._telemetry["history_messages"] = history_messages
+        self._telemetry["prompt_chars"] = total_prompt_characters
+
+        log.info(
+            f"\n============================================================\n"
+            f"[LOCAL TELEMETRY PROMPT SNAPSHOT]\n\n"
+            f"History Messages: {history_messages}\n"
+            f"History Characters: {history_characters}\n"
+            f"System Prompt Characters: {system_prompt_characters}\n"
+            f"User Prompt Characters: {user_prompt_characters}\n"
+            f"Total Prompt Characters: {total_prompt_characters}\n"
+            f"============================================================\n"
+        )
+
         return messages

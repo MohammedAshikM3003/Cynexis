@@ -6,10 +6,12 @@ For questions: STT → Intent → LLM (+ Personality & Memory) → Kokoro TTS �
 LLM NEVER directly controls hardware.
 """
 
+import base64
 import time
 import asyncio
+import os
 import re
-from typing import Optional, AsyncIterator
+from typing import Optional, AsyncIterator, Callable, Awaitable
 import psutil
 
 def capture_resources():
@@ -119,8 +121,17 @@ class VoicePipeline:
         self.router = router if router is not None else intelligence_router
         self.playback_queue = asyncio.Queue()
         self.playback_task = None
+        # WS audio sender queue — bounded to 8 chunks to limit memory; the sender
+        # task drains this independently of TTS synthesis so they don't block each other.
+        self._ws_queue: asyncio.Queue = asyncio.Queue(maxsize=8)
+        self._ws_sender_task: Optional[asyncio.Task] = None
+        self._ws_connection = None  # active WebSocket reference set by ws_voice.py
+        self._ws_chunk_index: int = 0
         self.current_tracker = None
         self._interrupted = False
+        self._chunks_generated: int = 0
+        self._chunks_sent: int = 0
+        self._geocode_cache = {}
         log.info("VoicePipeline initialized with low-latency streaming and Intelligence Router")
 
     def _ensure_playback_task(self):
@@ -132,6 +143,20 @@ class VoicePipeline:
 
         if self.playback_task is None or self.playback_task.done():
             self.playback_task = loop.create_task(self._playback_worker())
+
+    def _get_history_limit(self, text: str) -> int:
+        """Dynamically determine how many turns of history to send based on context relevance."""
+        text_lower = text.lower().strip()
+        followup_markers = {
+            "it", "they", "he", "she", "this", "that", "these", "those", "them", "him", "her",
+            "then", "there", "what about", "how about", "and", "why", "who", "which",
+            "more", "continue", "explain", "elaborate"
+        }
+        words = set(re.findall(r"\b\w+\b", text_lower))
+        is_followup = any(marker in text_lower for marker in ["what about", "how about"]) or not words.isdisjoint(followup_markers)
+        if len(words) <= 2:
+            is_followup = True
+        return 3 if is_followup else 0
 
     async def _playback_worker(self):
         """Sequential playback worker task that processes speech chunks from the queue."""
@@ -185,6 +210,13 @@ class VoicePipeline:
                 self.playback_queue.task_done()
             except (asyncio.QueueEmpty, ValueError):
                 break
+        # Also drain the WS sender queue so stale chunks aren't delivered after stop.
+        while not self._ws_queue.empty():
+            try:
+                self._ws_queue.get_nowait()
+                self._ws_queue.task_done()
+            except (asyncio.QueueEmpty, ValueError):
+                break
 
         if hasattr(self.tts, "stop"):
             self.tts.stop()
@@ -194,24 +226,118 @@ class VoicePipeline:
             robot_state.voice.state = "IDLE"
         log.info("VoicePipeline: Active speech interrupted and stopped")
 
-    async def _sentence_chunker(self, token_stream: AsyncIterator[str], tracker: Optional[dict] = None) -> AsyncIterator[str]:
-        """Buffer tokens and yield speech chunks as early as possible.
+    def _ensure_ws_sender_task(self) -> None:
+        """Start the WS sender worker task if not already running."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._ws_sender_task is None or self._ws_sender_task.done():
+            self._ws_sender_task = loop.create_task(self._ws_sender_worker())
 
-        Strategy — yield text to Kokoro at the earliest natural break:
-          1. Always yield on sentence-ending punctuation (. ! ?)
-          2. Also yield on clause boundaries (, ; : —) when buffer > 25 chars
-             so Kokoro starts synthesizing sooner.
-          3. Force-flush if buffer > 80 chars with no punctuation at all.
-
-        Shorter chunks = Kokoro produces first audio faster = lower TTFA.
+    async def _ws_sender_worker(self) -> None:
         """
-        buffer = ""
-        sentence_end_re = re.compile(r"([^.!?]+[.!?]+)(?:\s+|$)")
-        clause_break_re = re.compile(r"(.{20,}?[,;:\u2014\u2013\-])(?:\s+)")
-        first_clause_re = re.compile(r"(.{10,}?[,;:\u2014\u2013.!?])(?:\s+)")
+        Dedicated task that drains the WS audio queue and sends chunks to the
+        browser independently of TTS synthesis.
 
+        By separating WS delivery from the synthesis loop we avoid head-of-line
+        blocking: TTS for chunk N+1 starts the moment synthesis for chunk N
+        finishes, regardless of how long the WebSocket send takes.
+        """
+        while True:
+            try:
+                item = await self._ws_queue.get()
+                if item is None:  # sentinel — shut down
+                    self._ws_queue.task_done()
+                    break
+                wav_bytes, text_chunk, is_first, t_synth_start, t_synth_end = item
+                ws = self._ws_connection
+                if ws is not None:
+                    try:
+                        # base64 encoding in a thread — keeps event loop free
+                        b64 = await asyncio.to_thread(
+                            lambda b=wav_bytes: base64.b64encode(b).decode("utf-8")
+                        )
+                        await ws.send_json({
+                            "type": "chunk",
+                            "index": self._ws_chunk_index,
+                            "text": text_chunk,
+                            "is_first": is_first,
+                            "audio_base64": b64,
+                            "tts_start": t_synth_start,
+                            "tts_end": t_synth_end,
+                            "ws_send_ts": time.time(),
+                        })
+                        self._ws_chunk_index += 1
+                        self._chunks_sent += 1
+                    except Exception as send_err:
+                        log.debug(f"WS sender: failed to send chunk: {send_err}")
+                self._ws_queue.task_done()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.error(f"WS sender worker error: {e}")
+
+    async def _sentence_chunker(self, token_stream: AsyncIterator[str], tracker: Optional[dict] = None) -> AsyncIterator[str]:
+        """Buffer tokens and yield speech chunks for Kokoro.
+
+        CHUNKING STRATEGY
+        -----------------
+        Two hard constraints:
+
+          1. LOW TTFA — chunk 0 must start synthesizing as soon as there
+             is a natural, non-trivially-short sentence to work with.
+
+          2. NO STARVATION — chunk 0 must provide enough playback buffer
+             for chunk 1 to finish synthesizing before chunk 0 ends.
+
+        At ~14–15 chars/sec spoken (Kokoro default, measured from telemetry)
+        the sweet spot for chunk 0 is approximately 30–90 characters:
+
+          30 chars ≈ 2.0 s   (minimum useful buffer)
+          50 chars ≈ 3.3 s   (comfortable target)
+          90 chars ≈ 6.0 s   (hard cap — above this TTFA becomes painful)
+
+        FIRST CHUNK ALGORITHM
+        ---------------------
+        Walk complete sentences one at a time.  At each sentence boundary:
+
+          • If accumulated text < FIRST_CHUNK_MIN_CHARS:
+                keep accumulating — don't yield a trivially short first word.
+          • If accumulated text >= FIRST_CHUNK_MIN_CHARS:
+                yield immediately and switch to subsequent-chunk mode.
+
+        This fires as soon as the FIRST complete sentence that is long
+        enough is available — it does NOT hold all sentences until the
+        total crosses the threshold (that was the 10.5 s bug).
+
+        The FIRST_CHUNK_TARGET_CHARS / FIRST_CHUNK_MAX_CHARS constants are
+        safety valves for pathological cases (no punctuation, very short
+        sentences that keep arriving).
+
+        SUBSEQUENT CHUNKS
+        -----------------
+        After chunk 0 is emitted, switch to natural-boundary splitting with
+        a SUBSEQUENT_FORCE_FLUSH hard cap.
+        """
+        # ── Tuning knobs ─────────────────────────────────────────────────
+        # At ~14–15 chars/sec spoken:
+        #   30 chars ≈ 2.0 s  — minimum to avoid starvation after chunk 0
+        #   50 chars ≈ 3.3 s  — comfortable target; yield if single sentence reaches this
+        #   90 chars ≈ 6.0 s  — hard max; never accumulate more than this for chunk 0
+        # Tune these if measured audio durations diverge significantly.
+        FIRST_CHUNK_MIN_CHARS: int = 25    # must reach at a sentence boundary to yield chunk 0
+        FIRST_CHUNK_TARGET_CHARS: int = 40 # if a single sentence already exceeds this, yield immediately
+        FIRST_CHUNK_MAX_CHARS: int = 60    # hard cap — force-flush regardless of boundary
+        SUBSEQUENT_FORCE_FLUSH: int = 120  # unchanged from before
+        # ─────────────────────────────────────────────────────────────────
+
+        buffer = ""
         is_first_token = True
         is_first_chunk = True
+
+        # Sentence-end regex — matches text ending with . ! ? ; or newline.
+        natural_end_re = re.compile(r"([^.!?;\n]+[.!?;\n])(?:\s+|$)")
 
         if tracker is not None:
             tracker["chunks"] = []
@@ -224,12 +350,71 @@ class VoicePipeline:
                     tracker["llm_first_token_resources"] = capture_resources()
             buffer += token
 
-            # For the very first chunk: ultra-fast early yielding for low TTFA
             if is_first_chunk:
-                match = first_clause_re.search(buffer)
-                if match:
-                    chunk = match.group(1).strip().rstrip(",;:\u2014\u2013-")
-                    if chunk and len(chunk) >= 8:
+                # ── First-chunk phase ─────────────────────────────────────
+                # Walk sentences ONE AT A TIME.  Yield at the first boundary
+                # where accumulated text is >= FIRST_CHUNK_MIN_CHARS.
+                # This avoids the "accumulate all → 10 s chunk" problem.
+
+                first_chunk_acc = ""   # complete sentences seen so far
+                remainder = buffer     # tail after last complete sentence
+
+                while True:
+                    m = natural_end_re.search(remainder)
+                    if not m:
+                        break  # no more complete sentences in buffer right now
+
+                    sentence = m.group(1).strip()
+                    candidate = (first_chunk_acc + " " + sentence).strip() if first_chunk_acc else sentence
+                    remainder = remainder[m.end():]
+
+                    # Yield immediately if this sentence alone is already large
+                    # enough (target chars) — don't wait for another sentence.
+                    if len(candidate) >= FIRST_CHUNK_MIN_CHARS:
+                        # We have enough — emit chunk 0 and stop accumulating.
+                        is_first_chunk = False
+                        if tracker is not None:
+                            now = time.time()
+                            tracker["llm_first_clause"] = now
+                            tracker["first_clause_ready"] = now
+                            tracker["first_clause_ready_resources"] = capture_resources()
+                            tracker["chunks"].append({
+                                "text": candidate,
+                                "length": len(candidate),
+                                "reason": "first_chunk_threshold_met"
+                            })
+                        yield candidate
+                        buffer = remainder
+                        break  # exit inner while; continue token loop in subsequent mode
+                    else:
+                        # This sentence is too short on its own.  Accumulate
+                        # it and check the next sentence before deciding.
+                        first_chunk_acc = candidate
+                        # Don't update buffer yet — wait until we decide to yield.
+
+                # If we just yielded chunk 0, the inner break set is_first_chunk=False.
+                # The outer `continue` will restart the token loop in subsequent mode.
+                if not is_first_chunk:
+                    continue
+
+                # Hard max guard — if buffer has grown past FIRST_CHUNK_MAX_CHARS
+                # without a sentence boundary long enough to trigger the above,
+                # flush whatever we have to prevent TTFA from growing unbounded.
+                if len(buffer) >= FIRST_CHUNK_MAX_CHARS:
+                    if first_chunk_acc:
+                        # We have some accumulated sentences — use them.
+                        chunk = first_chunk_acc
+                        buffer = remainder
+                    else:
+                        # No sentence boundary at all — word-boundary flush.
+                        last_space = buffer.rfind(" ", 40, len(buffer) - 5)
+                        if last_space > 0:
+                            chunk = buffer[:last_space].strip()
+                            buffer = buffer[last_space:].lstrip()
+                        else:
+                            chunk = buffer.strip()
+                            buffer = ""
+                    if chunk:
                         is_first_chunk = False
                         if tracker is not None:
                             now = time.time()
@@ -239,42 +424,21 @@ class VoicePipeline:
                             tracker["chunks"].append({
                                 "text": chunk,
                                 "length": len(chunk),
-                                "reason": "first_clause_early_punct"
+                                "reason": "first_chunk_max_flush"
                             })
                         yield chunk
-                        buffer = buffer[match.end():]
-                        continue
+                    continue
 
-                # If first chunk reaches 35 chars without punctuation, flush on word boundary
-                if len(buffer) >= 35:
-                    last_space = buffer.rfind(" ", 15, len(buffer) - 3)
-                    if last_space > 0:
-                        chunk = buffer[:last_space].strip()
-                        if chunk and len(chunk) >= 12:
-                            is_first_chunk = False
-                            if tracker is not None:
-                                now = time.time()
-                                tracker["llm_first_clause"] = now
-                                tracker["first_clause_ready"] = now
-                                tracker["first_clause_ready_resources"] = capture_resources()
-                                tracker["chunks"].append({
-                                    "text": chunk,
-                                    "length": len(chunk),
-                                    "reason": "first_clause_word_boundary"
-                                })
-                            yield chunk
-                            buffer = buffer[last_space:].lstrip()
-                            continue
+                # Not enough yet — keep accumulating tokens.
+                continue
 
-            # Standard subsequent chunk handling
-            # 1. Sentence boundaries
+            # ── Subsequent chunks: standard natural-boundary splitting ─────
             while True:
-                match = sentence_end_re.search(buffer)
+                match = natural_end_re.search(buffer)
                 if not match:
                     break
-                sentence = match.group(1).strip()
-                if sentence:
-                    is_first_chunk = False
+                chunk = match.group(1).strip()
+                if chunk:
                     if tracker is not None:
                         if tracker.get("llm_first_clause") is None:
                             tracker["llm_first_clause"] = time.time()
@@ -282,41 +446,20 @@ class VoicePipeline:
                             tracker["first_clause_ready"] = time.time()
                             tracker["first_clause_ready_resources"] = capture_resources()
                         tracker["chunks"].append({
-                            "text": sentence,
-                            "length": len(sentence),
-                            "reason": "sentence_boundary"
+                            "text": chunk,
+                            "length": len(chunk),
+                            "reason": "natural_boundary"
                         })
-                    yield sentence
+                    yield chunk
                 buffer = buffer[match.end():]
 
-            # 2. Clause boundaries
-            if len(buffer) > 25:
-                match = clause_break_re.search(buffer)
-                if match:
-                    clause = match.group(1).strip().rstrip(",;:\u2014\u2013-")
-                    if clause and len(clause) > 10:
-                        is_first_chunk = False
-                        if tracker is not None:
-                            if tracker.get("llm_first_clause") is None:
-                                tracker["llm_first_clause"] = time.time()
-                            if tracker.get("first_clause_ready") is None:
-                                tracker["first_clause_ready"] = time.time()
-                                tracker["first_clause_ready_resources"] = capture_resources()
-                            tracker["chunks"].append({
-                                "text": clause,
-                                "length": len(clause),
-                                "reason": "clause_boundary"
-                            })
-                        yield clause
-                        buffer = buffer[match.end():]
-
-            # 3. Force flush at 70 chars
-            if len(buffer) > 70:
-                last_space = buffer.rfind(" ", 20, len(buffer) - 5)
+            # Force-flush at SUBSEQUENT_FORCE_FLUSH chars to prevent
+            # unbounded buffer growth when the LLM produces no punctuation.
+            if len(buffer) > SUBSEQUENT_FORCE_FLUSH:
+                last_space = buffer.rfind(" ", 80, len(buffer) - 5)
                 if last_space > 0:
                     chunk = buffer[:last_space].strip()
                     if chunk:
-                        is_first_chunk = False
                         if tracker is not None:
                             if tracker.get("llm_first_clause") is None:
                                 tracker["llm_first_clause"] = time.time()
@@ -331,6 +474,10 @@ class VoicePipeline:
                         yield chunk
                     buffer = buffer[last_space:].lstrip()
 
+        # ── Stream-end flush ──────────────────────────────────────────────
+        # Yield whatever remains when the LLM stream ends.
+        # This is the ONLY path for very short single-sentence answers
+        # (e.g. "Four.") that never triggered the threshold above.
         remaining = buffer.strip()
         if remaining:
             if tracker is not None:
@@ -346,8 +493,11 @@ class VoicePipeline:
                 })
             yield remaining
 
+
+
     async def _synthesize_and_queue_response(
-        self, text: str, voice: str, speed: float, result: dict, speech_end_ts: float, response_ready_ts: float, play_local: bool
+        self, text: str, voice: str, speed: float, result: dict, speech_end_ts: float, response_ready_ts: float, play_local: bool,
+        chunk_callback: Optional[Callable[[bytes, str, bool, float, float], Awaitable[None]]] = None
     ) -> tuple[list[bytes], float]:
         """Split static text response, synthesize sentences, queue them, and track latency."""
         sentence_ends = re.compile(r"([^.!?]+[.!?]+)(?:\s+|$)")
@@ -377,6 +527,22 @@ class VoicePipeline:
             if wav_chunk is not None:
                 wav_chunks.append(wav_chunk)
                 await self.playback_queue.put((wav_chunk, play_local, is_first))
+                self._chunks_generated += 1
+                is_first = False
+                # Non-blocking WS delivery: enqueue for the sender worker.
+                # Falls back to legacy chunk_callback for non-WS paths (REST API, CLI).
+                if self._ws_connection is not None:
+                    try:
+                        self._ws_queue.put_nowait(
+                            (wav_chunk, sentence, is_first, t_synth, time.time())
+                        )
+                    except asyncio.QueueFull:
+                        log.warning("WS audio queue full — dropping chunk for browser")
+                elif chunk_callback is not None:
+                    try:
+                        await chunk_callback(wav_chunk, sentence, is_first, t_synth, time.time())
+                    except Exception as cb_err:
+                        log.debug(f"Chunk callback error (legacy path): {cb_err}")
 
                 if is_first:
                     is_first = False
@@ -502,6 +668,60 @@ class VoicePipeline:
                 }
             })
 
+    async def _resolve_user_location(self, user_loc: str) -> Optional[tuple]:
+        """Resolves raw USER_LOCATION string into (lat, lon) coordinates."""
+        user_loc_clean = user_loc.strip()
+        m = re.match(r"^\s*([\-\d\.]+)\s*,\s*([\-\d\.]+)\s*$", user_loc_clean)
+        if m:
+            return float(m.group(1)), float(m.group(2))
+        
+        lower_loc = user_loc_clean.lower()
+        if lower_loc == "chennai":
+            return 13.0827, 80.2707
+        
+        cache_key = lower_loc
+        if cache_key in self._geocode_cache:
+            return self._geocode_cache[cache_key]
+        
+        import httpx
+        headers = {"User-Agent": "CynexisVoiceAssistant/1.0"}
+        async with httpx.AsyncClient(timeout=2.5) as client:
+            try:
+                url = f"https://nominatim.openstreetmap.org/search?q={user_loc_clean}&format=json&limit=1&accept-language=en"
+                r = await client.get(url, headers=headers)
+                if r.status_code == 200:
+                    data = r.json()
+                    if data:
+                        coords = float(data[0]["lat"]), float(data[0]["lon"])
+                        self._geocode_cache[cache_key] = coords
+                        log.info(f"Geocoded override location '{user_loc_clean}' to {coords}")
+                        return coords
+            except Exception:
+                pass
+
+            segments = [s.strip() for s in user_loc_clean.split(",")]
+            for segment in segments:
+                if not segment or len(segment) < 3:
+                    continue
+                clean_seg = re.sub(r"\b\d{6}\b", "", segment)
+                clean_seg = clean_seg.replace("-", "").strip()
+                if not clean_seg or len(clean_seg) < 3:
+                    continue
+                try:
+                    url = f"https://nominatim.openstreetmap.org/search?q={clean_seg}&format=json&limit=1&accept-language=en"
+                    r = await client.get(url, headers=headers)
+                    if r.status_code == 200:
+                        data = r.json()
+                        if data:
+                            coords = float(data[0]["lat"]), float(data[0]["lon"])
+                            self._geocode_cache[cache_key] = coords
+                            log.info(f"Geocoded override location segment '{clean_seg}' to {coords}")
+                            return coords
+                except Exception:
+                    pass
+
+        return None
+
     async def process_audio(
         self,
         audio_data: Optional[bytes] = None,
@@ -509,9 +729,26 @@ class VoicePipeline:
         voice: Optional[str] = None,
         speed: Optional[float] = None,
         play_local: Optional[bool] = None,
+        chunk_callback: Optional[Callable[[bytes, str, bool, float, float], Awaitable[None]]] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        accuracy: Optional[float] = None,
+        timestamp: Optional[float] = None,
+        allow_location_request: bool = False,
     ) -> dict:
         """Process raw audio through the optimized low-latency pipeline."""
+        # Geolocation override check
+        user_loc = getattr(settings, "user_location", None) or os.getenv("USER_LOCATION")
+        if user_loc:
+            coords = await self._resolve_user_location(user_loc)
+            if coords:
+                latitude, longitude = coords
+                accuracy = 10.0
+                timestamp = time.time() * 1000
+
         t_start = time.time()
+        self._chunks_generated = 0
+        self._chunks_sent = 0
         self._ensure_playback_task()
         self._interrupted = False
         resolved_voice = voice or voice_manager.get_current_voice()
@@ -540,6 +777,7 @@ class VoicePipeline:
             "tts_provider": provider_name,
             "audio_bytes": b"",
             "latencies": {},
+            "online_telemetry": None,
             "error": None,
         }
 
@@ -629,10 +867,32 @@ class VoicePipeline:
         # Route query through IntelligenceRouter
         route_info: Optional[RoutingResult] = None
         if self.router and getattr(settings, "router_enabled", True):
-            route_info = await self.router.route_and_resolve(text)
+            route_info = await self.router.route_and_resolve(
+                text, latitude=latitude, longitude=longitude, accuracy=accuracy, timestamp=timestamp
+            )
             result["route"] = route_info.route.value
             result["route_confidence"] = route_info.confidence
             result["route_reason"] = route_info.reason
+            if hasattr(route_info, "online_telemetry") and route_info.online_telemetry:
+                result["online_telemetry"] = route_info.online_telemetry
+
+            # If route is WEATHER or LOCATION and we don't have latitude, check if location request is allowed
+            log.info(f"GEOLOCATION CHECK: route={route_info.route} latitude={latitude} allow_location_request={allow_location_request}")
+            from AI.Router.tools.weather_tool import WeatherTool
+            city = WeatherTool.extract_city(text)
+            is_weather_gps = (route_info.route == RouteCategory.WEATHER and city is None)
+            is_location_query = (route_info.route == RouteCategory.LOCATION)
+            if (is_weather_gps or is_location_query) and latitude is None:
+                if allow_location_request:
+                    result["needs_location"] = True
+                    result["recognized_text"] = text
+                    robot_state.voice.is_processing = False
+                    robot_state.voice.state = "IDLE"
+                    self._fill_latencies(
+                        result, speech_end_ts, stt_complete_ts, intent_complete_ts,
+                        time.time(), None, None, 0.0, t_start
+                    )
+                    return result
         else:
             action_temp = self.intent.classify(text)
             result["route"] = RouteCategory.ROBOT_COMMAND.value if action_temp else RouteCategory.LOCAL.value
@@ -690,7 +950,8 @@ class VoicePipeline:
             # Synthesize and play command response
             if result["response"]:
                 wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
-                    result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+                    result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local,
+                    chunk_callback=chunk_callback
                 )
                 if result["latencies"].get("tts_first_audio_ready"):
                     tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
@@ -704,7 +965,8 @@ class VoicePipeline:
             robot_state.voice.last_response = result["response"]
 
             wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
-                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local,
+                chunk_callback=chunk_callback
             )
             if result["latencies"].get("tts_first_audio_ready"):
                 tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
@@ -725,7 +987,8 @@ class VoicePipeline:
             robot_state.voice.last_response = result["response"]
 
             wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
-                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local,
+                chunk_callback=chunk_callback
             )
             if result["latencies"].get("tts_first_audio_ready"):
                 tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
@@ -735,7 +998,7 @@ class VoicePipeline:
             # CONVERSATION PATH (LLM Streaming + sentence synthesis, with optional live retrieved context)
             robot_state.voice.state = "THINKING"
             try:
-                history = await self.memory.get_conversation_history(limit=5)
+                history = await self.memory.get_conversation_history(limit=3)
                 system_prompt = get_system_prompt()
                 augmented = route_info.augmented_context if route_info else None
                 if augmented:
@@ -781,6 +1044,20 @@ class VoicePipeline:
                         wav_chunks.append(wav_chunk)
                         await self.playback_queue.put((wav_chunk, resolved_play_local, is_first))
 
+                        # Non-blocking WS delivery: enqueue for the sender worker.
+                        if self._ws_connection is not None:
+                            try:
+                                self._ws_queue.put_nowait(
+                                    (wav_chunk, sentence, is_first, t_synth, time.time())
+                                )
+                            except asyncio.QueueFull:
+                                log.warning("WS audio queue full — dropping chunk for browser")
+                        elif chunk_callback is not None:
+                            try:
+                                await chunk_callback(wav_chunk, sentence, is_first, t_synth, time.time())
+                            except Exception as cb_err:
+                                log.debug(f"Chunk callback error (legacy path): {cb_err}")
+
                         if is_first:
                             is_first = False
                             now = time.time()
@@ -823,9 +1100,26 @@ class VoicePipeline:
         voice: Optional[str] = None,
         speed: Optional[float] = None,
         play_local: Optional[bool] = None,
+        chunk_callback: Optional[Callable[[bytes, str, bool, float, float], Awaitable[None]]] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        accuracy: Optional[float] = None,
+        timestamp: Optional[float] = None,
+        allow_location_request: bool = False,
     ) -> dict:
         """Process text input (bypass STT) through the optimized low-latency pipeline."""
+        # Geolocation override check
+        user_loc = getattr(settings, "user_location", None) or os.getenv("USER_LOCATION")
+        if user_loc:
+            coords = await self._resolve_user_location(user_loc)
+            if coords:
+                latitude, longitude = coords
+                accuracy = 10.0
+                timestamp = time.time() * 1000
+
         t_start = time.time()
+        self._chunks_generated = 0
+        self._chunks_sent = 0
         self._ensure_playback_task()
         self._interrupted = False
         resolved_voice = voice or voice_manager.get_current_voice()
@@ -854,6 +1148,7 @@ class VoicePipeline:
             "tts_provider": provider_name,
             "audio_bytes": b"",
             "latencies": {},
+            "online_telemetry": None,
             "error": None,
         }
 
@@ -917,10 +1212,34 @@ class VoicePipeline:
         # Route query through IntelligenceRouter
         route_info: Optional[RoutingResult] = None
         if self.router and getattr(settings, "router_enabled", True):
-            route_info = await self.router.route_and_resolve(text)
+            route_info = await self.router.route_and_resolve(
+                text, latitude=latitude, longitude=longitude, accuracy=accuracy, timestamp=timestamp
+            )
             result["route"] = route_info.route.value
             result["route_confidence"] = route_info.confidence
             result["route_reason"] = route_info.reason
+            if hasattr(route_info, "online_telemetry") and route_info.online_telemetry:
+                result["online_telemetry"] = route_info.online_telemetry
+
+            # If route is WEATHER and we don't have latitude, check if location request is allowed (only if not explicit city)
+            # If route is WEATHER or LOCATION and we don't have latitude, check if location request is allowed
+            log.info(f"GEOLOCATION CHECK TEXT: route={route_info.route} latitude={latitude} allow_location_request={allow_location_request}")
+            from AI.Router.tools.weather_tool import WeatherTool
+            city = WeatherTool.extract_city(text)
+            is_weather_gps = (route_info.route == RouteCategory.WEATHER and city is None)
+            is_location_query = (route_info.route == RouteCategory.LOCATION)
+            if (is_weather_gps or is_location_query) and latitude is None:
+                if allow_location_request:
+                    result["needs_location"] = True
+                    result["recognized_text"] = text
+                    robot_state.voice.is_processing = False
+                    robot_state.voice.state = "IDLE"
+                    response_ready_ts = time.time()
+                    self._fill_latencies(
+                        result, speech_end_ts, stt_complete_ts, intent_complete_ts,
+                        response_ready_ts, None, None, 0.0, t_start
+                    )
+                    return result
         else:
             action_temp = self.intent.classify(text)
             result["route"] = RouteCategory.ROBOT_COMMAND.value if action_temp else RouteCategory.LOCAL.value
@@ -965,21 +1284,47 @@ class VoicePipeline:
             # Synthesize and play command response
             if result["response"]:
                 wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
-                    result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+                    result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local,
+                    chunk_callback=chunk_callback
                 )
                 if result["latencies"].get("tts_first_audio_ready"):
                     tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
                     playback_started_ts = result["latencies"]["playback_started"]
 
-        elif route_info and route_info.direct_response:
-            # DETERMINISTIC TOOL PATH (Instant response via Time, Date, Calc, Status, Project Knowledge, or Offline Fallback)
+        elif route_info and route_info.route in (RouteCategory.CALCULATOR, "CALCULATOR") and route_info.direct_response:
+            # DETERMINISTIC CALCULATOR PATH
             response_ready_ts = time.time()
             result["response"] = route_info.direct_response
             await self.memory.add_conversation("assistant", result["response"])
             robot_state.voice.last_response = result["response"]
 
             wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
-                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local,
+                chunk_callback=chunk_callback
+            )
+            if result["latencies"].get("tts_first_audio_ready"):
+                tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
+                playback_started_ts = result["latencies"]["playback_started"]
+
+            # Print Calculator Telemetry
+            tool_time = time.time() - t_start
+            print(f"\n============================================================\n"
+                  f"[CALCULATOR TELEMETRY]\n"
+                  f"ollama=false\n"
+                  f"tool_time={tool_time:.3f} s\n"
+                  f"direct_response=true\n"
+                  f"============================================================\n")
+
+        elif route_info and route_info.direct_response:
+            # DETERMINISTIC TOOL PATH (Instant response via Time, Date, Status, Project Knowledge, or Offline Fallback)
+            response_ready_ts = time.time()
+            result["response"] = route_info.direct_response
+            await self.memory.add_conversation("assistant", result["response"])
+            robot_state.voice.last_response = result["response"]
+
+            wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local,
+                chunk_callback=chunk_callback
             )
             if result["latencies"].get("tts_first_audio_ready"):
                 tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
@@ -1000,7 +1345,8 @@ class VoicePipeline:
             robot_state.voice.last_response = result["response"]
 
             wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
-                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local
+                result["response"], resolved_voice, resolved_speed, result, speech_end_ts, response_ready_ts, resolved_play_local,
+                chunk_callback=chunk_callback
             )
             if result["latencies"].get("tts_first_audio_ready"):
                 tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
@@ -1010,7 +1356,8 @@ class VoicePipeline:
             # CONVERSATION PATH (LLM Streaming + sentence synthesis, with optional live retrieved context)
             robot_state.voice.state = "THINKING"
             try:
-                history = await self.memory.get_conversation_history(limit=5)
+                limit = self._get_history_limit(text)
+                history = await self.memory.get_conversation_history(limit=limit)
                 system_prompt = get_system_prompt()
                 augmented = route_info.augmented_context if route_info else None
                 if augmented:
@@ -1056,6 +1403,20 @@ class VoicePipeline:
                         wav_chunks.append(wav_chunk)
                         await self.playback_queue.put((wav_chunk, resolved_play_local, is_first))
 
+                        # Non-blocking WS delivery: enqueue for the sender worker.
+                        if self._ws_connection is not None:
+                            try:
+                                self._ws_queue.put_nowait(
+                                    (wav_chunk, sentence, is_first, t_synth, time.time())
+                                )
+                            except asyncio.QueueFull:
+                                log.warning("WS audio queue full — dropping chunk for browser")
+                        elif chunk_callback is not None:
+                            try:
+                                await chunk_callback(wav_chunk, sentence, is_first, t_synth, time.time())
+                            except Exception as cb_err:
+                                log.debug(f"Chunk callback error (legacy path): {cb_err}")
+
                         if is_first:
                             is_first = False
                             now = time.time()
@@ -1091,3 +1452,59 @@ class VoicePipeline:
             total_tts_time, t_start
         )
         return result
+
+
+    async def process_direct_response(
+        self,
+        text: str,
+        response_text: str,
+        voice: Optional[str] = None,
+        speed: Optional[float] = None,
+        play_local: Optional[bool] = None,
+        chunk_callback: Optional[Callable[[bytes, str, bool, float, float], Awaitable[None]]] = None,
+        route: str = "WEATHER"
+    ) -> dict:
+        """Process a direct deterministic response (e.g. location error, calculator result) without routing/LLM."""
+        t_start = time.time()
+        self._chunks_generated = 0
+        self._chunks_sent = 0
+        self._ensure_playback_task()
+        self._interrupted = False
+        resolved_voice = voice or voice_manager.get_current_voice()
+        resolved_speed = speed if speed is not None else voice_manager.get_speed()
+        resolved_play_local = play_local if play_local is not None else getattr(settings, "tts_play_local", True)
+        
+        result = {
+            "text": text,
+            "route": route,
+            "response": response_text,
+            "is_command": False,
+            "action": None,
+            "latencies": {},
+            "online_telemetry": None
+        }
+        
+        await self.memory.add_conversation("user", text)
+        await self.memory.add_conversation("assistant", response_text)
+        robot_state.voice.last_response = response_text
+        
+        response_ready_ts = time.time()
+        
+        wav_chunks, total_tts_time = await self._synthesize_and_queue_response(
+            response_text, resolved_voice, resolved_speed, result, t_start, response_ready_ts, resolved_play_local,
+            chunk_callback=chunk_callback
+        )
+        
+        tts_first_audio_ready_ts = None
+        playback_started_ts = None
+        if result["latencies"].get("tts_first_audio_ready"):
+            tts_first_audio_ready_ts = result["latencies"]["tts_first_audio_ready"]
+            playback_started_ts = result["latencies"]["playback_started"]
+            
+        self._fill_latencies(
+            result, t_start, t_start, t_start,
+            response_ready_ts, tts_first_audio_ready_ts, playback_started_ts,
+            total_tts_time, t_start
+        )
+        return result
+

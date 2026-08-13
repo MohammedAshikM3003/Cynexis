@@ -3,6 +3,7 @@ CYNEXIS — FastAPI Server
 Main application with CORS, lifespan, and all routers mounted.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +23,7 @@ from .routes_command import router as command_router
 from .routes_voice import router as voice_router
 from .routes_conversation import router as conversation_router, llm_router
 from .ws_telemetry import router as ws_router
+from .ws_voice import router as ws_voice_router
 
 log = get_logger("server")
 
@@ -118,18 +120,17 @@ async def lifespan(app: FastAPI):
             microphone=mic,
         )
 
-        # Pre-warm Ollama in background — don't block server startup
-        async def _prewarm_ollama():
+        # Pre-warm Ollama synchronously — server is not ready until model is in RAM.
+        # A 12 s safety timeout prevents a broken Ollama from hanging startup forever.
+        if hasattr(llm, '_model') and llm.is_loaded():
+            log.info("Pre-warming Ollama model into RAM (blocking — server ready after)...")
             try:
-                log.info("Pre-warming Ollama model into RAM (background)...")
-                _ = await llm.generate("hi")
+                await asyncio.wait_for(llm.generate("hi"), timeout=12.0)
                 log.info("Ollama model pre-warmed successfully")
+            except asyncio.TimeoutError:
+                log.warning("Ollama pre-warm timed out after 12 s — server starting anyway")
             except Exception as e:
                 log.warning(f"Ollama pre-warm failed (non-fatal): {e}")
-
-        if hasattr(llm, '_model') and llm.is_loaded():
-            import asyncio
-            asyncio.get_running_loop().create_task(_prewarm_ollama())
 
         robot_state.ai.llm_loaded = True
         robot_state.ai.stt_loaded = True
@@ -236,7 +237,7 @@ async def lifespan(app: FastAPI):
             tts = KokoroTTSProvider()
         else:
             tts = MockTTSProvider()
-            await tts.load()
+        await tts.load()
         app.state.tts = tts
 
         memory = MockMemoryProvider(max_conversation=getattr(settings, "ollama_context_window", 8) * 2)
@@ -247,6 +248,17 @@ async def lifespan(app: FastAPI):
             actions=registry, safety=safety,
             microphone=mic,
         )
+
+        # Pre-warm Ollama synchronously — same as mock mode.
+        if hasattr(llm, '_model') and llm.is_loaded():
+            log.info("Pre-warming Ollama model into RAM (blocking — server ready after)...")
+            try:
+                await asyncio.wait_for(llm.generate("hi"), timeout=12.0)
+                log.info("Ollama model pre-warmed successfully")
+            except asyncio.TimeoutError:
+                log.warning("Ollama pre-warm timed out after 12 s — server starting anyway")
+            except Exception as e:
+                log.warning(f"Ollama pre-warm failed (non-fatal): {e}")
 
         robot_state.ai.llm_loaded = True
         robot_state.ai.stt_loaded = True
@@ -311,6 +323,7 @@ app.include_router(voice_router, prefix="/api")
 app.include_router(conversation_router, prefix="/api")
 app.include_router(llm_router, prefix="/api")
 app.include_router(ws_router)
+app.include_router(ws_voice_router)
 
 
 
