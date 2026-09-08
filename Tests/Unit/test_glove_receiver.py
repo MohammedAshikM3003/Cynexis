@@ -114,7 +114,7 @@ class TestGloveReceiverState:
     """Verifies that received data cleanly updates robot_state."""
 
     def test_apply_telemetry_updates_robot_state(self):
-        bridge = GloveReceiverBridge(port="COM8", enabled=True)
+        bridge = GloveReceiverBridge(port="COM7", enabled=True)
         bridge._apply_telemetry(1500, 2800)
 
         assert robot_state.sensors.flex_thumb == 1500
@@ -124,7 +124,7 @@ class TestGloveReceiverState:
 
     @pytest.mark.asyncio
     async def test_callback_invocation(self):
-        bridge = GloveReceiverBridge(port="COM8", enabled=True)
+        bridge = GloveReceiverBridge(port="COM7", enabled=True)
         callback_called = False
         received_values = ()
 
@@ -151,7 +151,7 @@ class TestGloveReceiverLifecycle:
 
     @pytest.mark.asyncio
     async def test_disabled_receiver_does_not_start(self):
-        bridge = GloveReceiverBridge(port="COM8", enabled=False)
+        bridge = GloveReceiverBridge(port="COM7", enabled=False)
         started = await bridge.start()
         assert not started
         assert not bridge.is_running
@@ -165,7 +165,7 @@ class TestGloveReceiverLifecycle:
 
     @pytest.mark.asyncio
     async def test_start_stop_cleanly(self):
-        bridge = GloveReceiverBridge(port="COM8", reconnect_interval=0.05, enabled=True)
+        bridge = GloveReceiverBridge(port="COM7", reconnect_interval=0.05, enabled=True)
         with patch("serial.Serial", side_effect=Exception("Simulated port error")):
             started = await bridge.start()
             assert started
@@ -178,7 +178,7 @@ class TestGloveReceiverLifecycle:
     @pytest.mark.asyncio
     async def test_stream_reading_and_reconnection(self):
         """Simulates receiving lines via mock pyserial instance."""
-        bridge = GloveReceiverBridge(port="COM8", reconnect_interval=0.05, enabled=True)
+        bridge = GloveReceiverBridge(port="COM7", reconnect_interval=0.05, enabled=True)
 
         mock_serial = MagicMock()
         mock_serial.is_open = True
@@ -202,7 +202,7 @@ class TestGloveReceiverLifecycle:
 
     def test_read_only_invariant(self):
         """Ensures that GloveReceiverBridge possesses NO write or send methods."""
-        bridge = GloveReceiverBridge(port="COM8")
+        bridge = GloveReceiverBridge(port="COM7")
         assert not hasattr(bridge, "send")
         assert not hasattr(bridge, "send_command")
         assert not hasattr(bridge, "write")

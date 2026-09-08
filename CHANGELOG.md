@@ -6,6 +6,46 @@ Types: ADDED | CHANGED | REMOVED | FIXED | ARCHITECTURE | HARDWARE | SOFTWARE
 
 ---
 
+## [2026-08-17] — Phase 3/4: Robot Integration & 3-Node Topology
+
+### ADDED
+- HARDWARE: Integrated new physical Robot ESP32 board with MAC address `04:B2:47:82:38:FC`.
+- SOFTWARE: Upgraded `status_glove.ino` to parse and log the official `RobotToStatusPacket` telemetry sent by the Robot ESP32, displaying operating state, battery levels, RSSI, error codes, and servo/subsystem health.
+
+### CHANGED
+- CONFIG: Configured `MAC_ROBOT` to `04:B2:47:82:38:FC` in the shared and local copies of `cynexis_mac.h`.
+- CONFIG: Redirected `receiverMAC` in `control_glove.ino` to route packets to the new physical Robot ESP32 MAC address.
+
+---
+
+## [2026-08-16] — Phase 3/4: Robot Integration
+
+### ADDED
+- SOFTWARE: Dynamic Control Glove MAC registration implemented on Robot ESP32 (`robot_esp32.ino`). The robot dynamically registers peer credentials upon first received packet and transmits AckPackets back without needing hardcoded values.
+- SOFTWARE: Local copies of `cynexis_protocol.h` and `cynexis_mac.h` added to the `RobotESP32/` directory for flat compilation compatibility.
+
+### FIXED
+- SOFTWARE: Upgraded `on_data_recv` in `robot_esp32.ino` to be version-agnostic across ESP32 Arduino Core 2.x and 3.x using preprocessor conditional blocks.
+- CONFIG: Shared Status Glove MAC address hardcoded as `28:05:A5:E2:85:B8` in `cynexis_mac.h`.
+
+---
+
+## [2026-08-14] — Phase 2/3/4: Glove Integration
+
+### FIXED
+- HARDWARE/SOFTWARE: Pinky flex sensor moved from GPIO 25 (ADC2) to GPIO 36 (SVP / ADC1) on the Control Glove to resolve the ESP32 Wi-Fi hardware lock conflict. Pinky sensor now reads successfully.
+- SOFTWARE: Receiver (`status_glove.ino`) print layout restructured to print clean debug lines matching expected output formatting.
+
+### ADDED
+- SOFTWARE: Bi-directional analog-to-percentage mapping (`getBendPercentage`) and state classifier (`getFingerState`) implemented on Receiver.
+- SOFTWARE: Configurable, non-locking Gesture Recognition engine (`classifyGesture`) implemented in receiver firmware. Supports OPEN HAND, FIST, POINT, THUMBS UP, PEACE SIGN, and PARTIAL states.
+- SOFTWARE: Custom Python `monitor.py` script added to project root to allow stable serial port monitoring without Arduino IDE interface crashes.
+
+### CHANGED
+- HARDWARE: Control Glove Pinky pin changed to GPIO 36 (SVP).
+
+---
+
 ## [2026-08-04] — Specification v2.1
 
 ### FIXED

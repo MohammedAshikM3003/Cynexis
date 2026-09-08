@@ -2,7 +2,7 @@ import serial
 import json
 import time
 
-PORT = "COM6"
+PORT = "COM7"
 BAUD = 115200
 
 print("Opening", PORT)

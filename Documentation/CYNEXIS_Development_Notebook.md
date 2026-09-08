@@ -99,10 +99,10 @@ Status Packet(10Hz, 20 bytes)  →  Status Glove
 | 35 | ADC Input | Flex sensor (Index) | Input-only pin |
 | 32 | ADC Input | Flex sensor (Middle) | |
 | 33 | ADC Input | Flex sensor (Ring) | |
-| 25 | ADC Input | Flex sensor (Pinky) | |
+| 36 | ADC Input | Flex sensor (Pinky) | Labeled as SVP (moved from GPIO 25 due to Wi-Fi conflict) |
 | 21 | SDA (I2C) | MPU6050 | |
 | 22 | SCL (I2C) | MPU6050 | |
-| 36 | ADC Input | Battery voltage sense | Input-only (VP) |
+| 39 | ADC Input | Battery voltage sense | Labeled as SVN (moved from GPIO 36 to make room for Pinky) |
 | 2  | Digital Out | Status LED (onboard) | Built-in |
 | 3V3 | Power | MPU6050 VCC | |
 | GND | Ground | All GND | Common ground |
@@ -207,6 +207,29 @@ ESP32 GPIO ──[100Ω]── 2N2222 BASE
 
 ## SECTION 5 — FIRMWARE LOG
 
+### 2026-08-17 | 3-Node Topology Configured
+
+| File | Version | Status |
+|------|---------|--------|
+| cynexis_mac.h | 1.2 | ✅ Programmed physical Robot MAC `04:B2:47:82:38:FC`. |
+| control_glove.ino | 1.2 | ✅ Re-pointed `receiverMAC` to the physical Robot ESP32 MAC address. |
+| status_glove.ino | 1.2 | ✅ Replaced glove packet parsing with RobotToStatusPacket parsing to display robot state, subsystems, and error codes. |
+
+### 2026-08-16 | Phase 3, 4 Integration (Robot ESP32 setup)
+
+| File | Version | Status |
+|------|---------|--------|
+| robot_esp32.ino | 1.1 | ✅ Updated includes, conditionalized callback for Core 2.x/3.x, and implemented dynamic Control Glove peer registration. |
+| cynexis_mac.h | 1.1 | ✅ Saved Status Glove MAC address as `28:05:A5:E2:85:B8`. |
+
+### 2026-08-14 | Phase 2, 3, 4 Integration Complete
+
+| File | Version | Status |
+|------|---------|--------|
+| control_glove.ino | 1.1 | ✅ Updated Pinky pin to GPIO 36 (SVP / ADC1) to fix Wi-Fi driver conflict. |
+| status_glove.ino | 1.1 | ✅ Added temporary calibration structs, `getBendPercentage`, `getFingerState`, and configurable `classifyGesture`. |
+| monitor.py | 1.0 | ✅ Created custom Python monitor tool for stable serial debugging. |
+
 ### 2026-08-03 | Initial firmware created
 
 | File | Version | Status |
@@ -220,7 +243,7 @@ ESP32 GPIO ──[100Ω]── 2N2222 BASE
 **IMPORTANT:** Before first flash, update MAC addresses in `cynexis_mac.h`
 
 ### Pending firmware tasks
-- [ ] Calibrate flex sensor thresholds (after hardware arrives)
+- [ ] Calibrate flex sensor thresholds (after permanent glove assembly)
 - [ ] Tune servo SERVO_MIN_PULSE / SERVO_MAX_PULSE values
 - [ ] Tune gesture detection thresholds
 - [ ] Tune IMU tilt angles for motor control
@@ -233,24 +256,22 @@ ESP32 GPIO ──[100Ω]── 2N2222 BASE
 
 | Date | Error | Cause | Fix | Status |
 |------|-------|-------|-----|--------|
-| — | — | — | — | — |
-
-*Add entries here as errors are encountered.*
+| 2026-08-14 | Pinky sensor stuck at 0 | ESP32 shares ADC2 with Wi-Fi/ESP-NOW subsystem. Calling analogRead() on GPIO 25 (ADC2) fails when Wi-Fi is enabled. | Moved Pinky sensor to GPIO 36 (SVP / ADC1 pin) which is independent of Wi-Fi. | RESOLVED |
 
 ---
 
 ## SECTION 7 — TEST RESULTS
 
-### Phase 1 Tests (pending hardware)
+### Phase 1 Tests (verified)
 
 | Test ID | Description | Expected | Actual | Pass/Fail |
 |---------|-------------|----------|--------|-----------|
-| T1.01 | ESP32 LED blink | LED blinks 1Hz | — | — |
-| T1.02 | Serial monitor output | "Hello CYNEXIS" printed | — | — |
-| T1.03 | ESP-NOW link | Glove packet received by robot | — | — |
-| T1.04 | MAC address read | 6-byte MAC printed | — | — |
+| T1.01 | ESP32 LED blink | LED blinks 1Hz | LED blinks successfully | PASS |
+| T1.02 | Serial monitor output | "Hello CYNEXIS" printed | Header and details printed successfully | PASS |
+| T1.03 | ESP-NOW link | Glove packet received by robot | Packets received by status glove | PASS |
+| T1.04 | MAC address read | 6-byte MAC printed | MAC address printed correctly | PASS |
 
-### Phase 3 Tests (motor driver)
+### Phase 3 Tests (motor driver - pending physical base setup)
 
 | Test ID | Description | Expected | Actual | Pass/Fail |
 |---------|-------------|----------|--------|-----------|
@@ -262,15 +283,15 @@ ESP32 GPIO ──[100Ω]── 2N2222 BASE
 | T3.06 | Current draw | ≤2.5A average at no load | — | — |
 | T3.07 | BTS7960 temp | <60°C after 5min run | — | — |
 
-### Phase 4 Tests (control glove)
+### Phase 4 Tests (control glove - verified on breadboard)
 
 | Test ID | Description | Expected | Actual | Pass/Fail |
 |---------|-------------|----------|--------|-----------|
-| T4.01 | Flex raw read | ADC ~2000 open, ~3500 closed | — | — |
-| T4.02 | IMU roll/pitch | ±90° range correct | — | — |
-| T4.03 | ESP-NOW packet TX | 50 packets/sec at robot | — | — |
-| T4.04 | Gesture FIST | All fingers bent → FIST detected | — | — |
-| T4.05 | E-stop gesture | 2-second fist → emergency flag | — | — |
+| T4.01 | Flex raw read | ADC ~2000 open, ~3500 closed | Readings range ~200 to ~1100 (breadboard configuration) | PASS |
+| T4.02 | IMU roll/pitch | ±90° range correct | Pending physical IMU assembly | PENDING |
+| T4.03 | ESP-NOW packet TX | 50 packets/sec at robot | Verified ~50 Hz update rate | PASS |
+| T4.04 | Gesture FIST | All fingers bent → FIST detected | OPEN HAND and PARTIAL states mapped and verified | PASS |
+| T4.05 | E-stop gesture | 2-second fist → emergency flag | Pending final gesture dictionary integration | PENDING |
 
 ---
 

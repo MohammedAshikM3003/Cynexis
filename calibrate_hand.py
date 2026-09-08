@@ -91,7 +91,7 @@ def collect_samples(ser: serial.Serial, position_name: str, instruction: str) ->
 
 
 def main():
-    port = settings.glove_receiver_port or "COM8"
+    port = settings.glove_receiver_port or "COM7"
     baud = settings.glove_receiver_baud or 115200
 
     print("=" * 65)

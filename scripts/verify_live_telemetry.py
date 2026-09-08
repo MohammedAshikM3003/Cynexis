@@ -1,6 +1,6 @@
 """
 CYNEXIS — Live Glove Receiver, Calibrated Bend & Gesture Recognition Verification
-Tests real-time telemetry streaming from COM8 with live 0-100% bend normalization
+Tests real-time telemetry streaming from COM7 with live 0-100% bend normalization
 and telemetry-only gesture recognition.
 """
 import sys
