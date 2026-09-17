@@ -1,0 +1,270 @@
+#include <SPI.h>
+#include <Servo.h>
+#include "nRF24L01.h"
+#include "RF24.h"
+
+// ==============================
+// PIN TANIMLAMALARI
+// ==============================
+#define PIN_ENA 4
+#define PIN_ENB 5
+#define PIN_INA 22
+#define PIN_INB 24
+#define PIN_INC 26
+#define PIN_IND 28
+
+#define PIN_CE  2
+#define PIN_CSN 3
+
+#define PIN_ROOT     12
+#define PIN_ARM_A1   11
+#define PIN_ARM_A2   10
+#define PIN_ARM_B    9
+#define PIN_WRIST_A  8
+#define PIN_WRIST_B  7
+#define PIN_GRIPPER  6
+
+#define LED_SIGNAL 13
+#define LED_MOTOR  44
+#define LED_ARM    46
+
+#define JOY_UPPER_LIMIT    3310
+#define JOY_LOWER_LIMIT    0
+#define JOY_MID 1600
+#define JOY_MID_UPPER_LIMIT    1700
+#define JOY_MID_LOWER_LIMIT    1500
+
+// ==============================
+// VERÄ° PAKETÄ° (VERÄ°CÄ° Ä°LE BÄ°REBÄ°R AYNI OLMALI)
+// ==============================
+struct Data_Package {
+  uint16_t j1x;
+  uint16_t j1y;
+  uint16_t j2x;
+  uint16_t j2y;
+  uint16_t p1;
+  uint16_t p2;
+  byte sw1;
+  byte sw2;
+  byte btn1;
+  byte btn2;
+};
+
+Data_Package receivedData;
+
+// ==============================
+// GLOBAL DEÄžÄ°ÅžKENLER
+// ==============================
+Servo root, arm_A1, arm_A2, arm_B, wrist_A, wrist_B, gripper;
+RF24 radio(PIN_CE, PIN_CSN);
+
+// Vericideki ile aynÄ± adres
+const uint64_t pipe = 0xE8E8F0F0E1ULL; 
+
+int root_pos    = 9000;
+int arm_A_pos   = 4000;
+int arm_B_pos   = 2000;
+int wrist_B_pos = 9000;
+
+// ZamanlayÄ±cÄ±lar ve Durum DeÄŸiÅŸkenleri
+unsigned long lastSignalTime = 0;
+const unsigned long SIGNAL_TIMEOUT = 500; 
+
+unsigned long lastServoTime = 0;
+const int SERVO_SPEED = 20; 
+
+bool isFailsafeActive = true; // Sinyal yokken sistemi kilitleyen bayrak
+
+void setup() {
+  
+  resetDataToSafeState();
+
+  pinMode(PIN_ENA, OUTPUT);
+  pinMode(PIN_ENB, OUTPUT);
+  pinMode(PIN_INA, OUTPUT);
+  pinMode(PIN_INB, OUTPUT);
+  pinMode(PIN_INC, OUTPUT);
+  pinMode(PIN_IND, OUTPUT);
+  
+  pinMode(LED_SIGNAL, OUTPUT);
+  pinMode(LED_MOTOR, OUTPUT);
+  pinMode(LED_ARM, OUTPUT);
+
+  root.attach(PIN_ROOT);
+  arm_A1.attach(PIN_ARM_A1);
+  arm_A2.attach(PIN_ARM_A2);
+  arm_B.attach(PIN_ARM_B);
+  wrist_A.attach(PIN_WRIST_A);
+  wrist_B.attach(PIN_WRIST_B);
+  gripper.attach(PIN_GRIPPER);
+
+  root.write(90);
+  arm_A1.write(40);
+  arm_A2.write(140);
+  arm_B.write(120);
+  wrist_A.write(90);
+  wrist_B.write(90);
+  gripper.write(90);
+
+  radio.begin();
+  radio.openReadingPipe(1, pipe);
+  
+  // ÇOK ÖNEMLÄ°: Verici ile aynÄ± iletiÅŸim hÄ±zÄ±!
+  radio.setDataRate(RF24_250KBPS); 
+  
+  radio.startListening();
+}
+
+void loop() {
+  // 1. KRÄ°TÄ°K KONTROL: nRF24L01 modülü takÄ±lÄ± mÄ±?
+  if (!radio.isChipConnected()) {
+    resetDataToSafeState();
+    stopMotors();
+    setLEDs(LOW, LOW);
+    
+    // DonanÄ±m hatasÄ±nÄ± LED yakÄ±p söndürerek bildir
+    if (millis() % 200 < 100) digitalWrite(LED_SIGNAL, HIGH);
+    else digitalWrite(LED_SIGNAL, LOW);
+    
+    return; // Sistemi durdur
+  }
+
+  receiveData();
+  checkFailsafe();
+
+  // Failsafe aktifse hiçbir ÅŸey yapma (MotorlarÄ± durdur ve bekle)
+  if (isFailsafeActive) {
+    stopMotors();
+    setLEDs(LOW, LOW);
+    return; 
+  }
+
+  // Mod Seçimi (sw1 üzerinden)
+  // sw1 = 1 ise Motor Modu, sw1 = 0 ise Kol Modu
+  if (receivedData.sw1 == 1) {
+    controlMotors();
+    setLEDs(LOW, HIGH);
+  } 
+  else {
+    controlArm();
+    setLEDs(HIGH, LOW);
+  }
+
+ 
+
+}
+
+// ==============================
+// FONKSÄ°YONLAR
+// ==============================
+
+void receiveData() {
+  if (radio.available()) {
+    radio.read(&receivedData, sizeof(Data_Package));
+    digitalWrite(LED_SIGNAL, HIGH);
+    lastSignalTime = millis(); 
+    isFailsafeActive = false; // Sinyal geldi, güvenliÄŸi kaldÄ±r
+  }
+}
+
+void checkFailsafe() {
+  if (millis() - lastSignalTime > SIGNAL_TIMEOUT) {
+    digitalWrite(LED_SIGNAL, LOW);
+    resetDataToSafeState(); 
+    isFailsafeActive = true; // Sinyal koptu, sistemi kilitle
+  }
+}
+
+void resetDataToSafeState() {
+  // ESP32'nin analog çözünürlüÄŸü 0-4095 olduÄŸu için orta nokta ~2048'dir.
+  receivedData.j1x = JOY_MID;
+  receivedData.j1y = JOY_MID;
+  receivedData.j2x = JOY_MID;
+  receivedData.j2y = JOY_MID;
+  // Potlara ve switchlere dokunmuyoruz
+}
+
+void setLEDs(bool armState, bool motorState) {
+  digitalWrite(LED_ARM, armState);
+  digitalWrite(LED_MOTOR, motorState);
+}
+
+void controlArm() {
+  if (millis() - lastServoTime > 5) {
+    lastServoTime = millis();
+
+    // 0-4095 aralÄ±ÄŸÄ±na göre ölü bölge (1800 - 2300 olarak ayarlandÄ±)
+    if (receivedData.j1y >= JOY_MID_UPPER_LIMIT) root_pos += SERVO_SPEED;
+    if (receivedData.j1y <= JOY_MID_LOWER_LIMIT) root_pos -= SERVO_SPEED;
+    root_pos = constrain(root_pos, 0, 18000);
+    root.write(180 - (root_pos / 100));
+
+    if (receivedData.j1x >= JOY_MID_UPPER_LIMIT) arm_A_pos += SERVO_SPEED;
+    if (receivedData.j1x <= JOY_MID_LOWER_LIMIT) arm_A_pos -= SERVO_SPEED;
+    arm_A_pos = constrain(arm_A_pos, 0, 18000);
+    arm_A1.write(arm_A_pos / 100);
+    arm_A2.write(180 - (arm_A_pos / 100));
+
+    if (receivedData.j2x >= JOY_MID_UPPER_LIMIT) arm_B_pos += SERVO_SPEED;
+    if (receivedData.j2x <= JOY_MID_LOWER_LIMIT) arm_B_pos -= SERVO_SPEED;
+    arm_B_pos = constrain(arm_B_pos, 0, 18000);
+    arm_B.write(180 - (arm_B_pos / 100));
+
+    // Potansiyometre haritalamasÄ± (0-4095'ten 0-180'e)
+    int wrist_A_mapped = map(receivedData.p2, JOY_LOWER_LIMIT, JOY_UPPER_LIMIT, 0, 180);
+    wrist_A.write(wrist_A_mapped);
+
+    if (receivedData.j2y >= JOY_MID_UPPER_LIMIT) wrist_B_pos += SERVO_SPEED;
+    if (receivedData.j2y <= JOY_MID_LOWER_LIMIT) wrist_B_pos -= SERVO_SPEED;
+    wrist_B_pos = constrain(wrist_B_pos, 0, 18000);
+    wrist_B.write(wrist_B_pos / 100);
+
+    // Tutucu (Gripper) potansiyometre haritalamasÄ± (0-4095'ten 33-115'e)
+    int gripper_mapped = map(receivedData.p1, JOY_LOWER_LIMIT, JOY_UPPER_LIMIT, 33, 115);
+    gripper.write(gripper_mapped);
+  }
+}
+
+void controlMotors() {
+  // Motor PWM haritalamalarÄ± da 12-bit (4095) ölçeÄŸine uyarlandÄ±.
+  if (receivedData.j1x > JOY_MID_UPPER_LIMIT) {
+    analogWrite(PIN_ENA, map(receivedData.j1x, JOY_MID_UPPER_LIMIT, JOY_UPPER_LIMIT, 0, 255));
+    digitalWrite(PIN_INB, HIGH);
+    digitalWrite(PIN_INA, LOW);
+  } 
+  else if (receivedData.j1x < JOY_MID_LOWER_LIMIT) {
+    analogWrite(PIN_ENA, map(receivedData.j1x, JOY_MID_LOWER_LIMIT, JOY_LOWER_LIMIT, 0, 255));
+    digitalWrite(PIN_INB, LOW);
+    digitalWrite(PIN_INA, HIGH);
+  } 
+  else {
+    analogWrite(PIN_ENA, 0);
+    digitalWrite(PIN_INA, LOW);
+    digitalWrite(PIN_INB, LOW);
+  }
+
+  if (receivedData.j2x > JOY_MID_UPPER_LIMIT) {
+    analogWrite(PIN_ENB, map(receivedData.j2x, JOY_MID_UPPER_LIMIT, JOY_UPPER_LIMIT, 0, 255));
+    digitalWrite(PIN_INC, HIGH);
+    digitalWrite(PIN_IND, LOW);
+  } 
+  else if (receivedData.j2x < JOY_MID_LOWER_LIMIT) {
+    analogWrite(PIN_ENB, map(receivedData.j2x, JOY_MID_LOWER_LIMIT, JOY_LOWER_LIMIT, 0, 255));
+    digitalWrite(PIN_INC, LOW);
+    digitalWrite(PIN_IND, HIGH);
+  } 
+  else {
+    analogWrite(PIN_ENB, 0);
+    digitalWrite(PIN_INC, LOW);
+    digitalWrite(PIN_IND, LOW);
+  }
+}
+
+void stopMotors() {
+  analogWrite(PIN_ENA, 0);
+  analogWrite(PIN_ENB, 0);
+  digitalWrite(PIN_INA, LOW);
+  digitalWrite(PIN_INB, LOW);
+  digitalWrite(PIN_INC, LOW);
+  digitalWrite(PIN_IND, LOW);
+}

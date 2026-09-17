@@ -1,0 +1,291 @@
+#include <WiFi.h>
+#include <DNSServer.h>
+#include <WebServer.h>
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+// --- Wi-Fi ve Sunucu AyarlarÄ± ---
+const char* ssid = "Tracked RC Rover Controller";
+const byte DNS_PORT = 53;
+DNSServer dnsServer;
+WebServer server(80);
+
+// --- ESP32-C6 Analog Pinleri (0-6 arasÄ± limitli) ---
+const int joy1_X = 2; 
+const int joy1_Y = 3;
+const int joy2_X = 0; 
+const int joy2_Y = 1;
+const int pot1 = 4;
+const int pot2 = 5;
+
+// --- Dijital Pinler (Switch ve Butonlar) ---
+const int switch1 = 6;
+const int switch2 = 7;
+const int button1 = 10;
+const int button2 = 11;
+
+// --- nRF24L01 AyarlarÄ± ---
+#define CE_PIN 22
+#define CSN_PIN 18
+RF24 radio(CE_PIN, CSN_PIN);
+const uint64_t radioPipe = 0xE8E8F0F0E1ULL;
+
+// Veri Gönderim Güvenlik Kilidi (Web sunucusunun donmasÄ±nÄ± engeller)
+bool isRadioConnected = false; 
+
+// KarÅŸÄ± tarafa (AlÄ±cÄ±ya) gönderilecek veri paketi
+struct Data_Package {
+  uint16_t j1x;
+  uint16_t j1y;
+  uint16_t j2x;
+  uint16_t j2y;
+  uint16_t p1;
+  uint16_t p2;
+  byte sw1;
+  byte sw2;
+  byte btn1;
+  byte btn2;
+};
+
+Data_Package sentData;
+unsigned long lastSendTime = 0;
+
+// --- 16:9 Gamepad HTML Arayüzü ---
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, orientation=landscape">
+  <title>Tracked Rover Control Panel</title>
+  <style>
+    body { background: #0a0a0a; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Segoe UI', sans-serif; color: #fff; }
+    
+    .remote-container {
+      position: relative;
+      background: #1e1e2f;
+      width: 100vw; max-width: calc(100vh * 16 / 9);
+      height: 100vh; max-height: calc(100vw * 9 / 16);
+      border-radius: 20px; box-shadow: 0 0 30px rgba(0, 210, 255, 0.2);
+      display: flex; justify-content: space-between; align-items: stretch;
+      box-sizing: border-box; padding: 2%;
+    }
+
+    .joy-panel { width: 30%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.2); border-radius: 15px; }
+    
+    .joystick-bg { width: 140px; height: 140px; background: #151522; border: 3px solid #333; border-radius: 50%; position: relative; }
+    .joystick-bg::before, .joystick-bg::after { content: ''; position: absolute; background: #444; }
+    .joystick-bg::before { width: 100%; height: 2px; top: 50%; left: 0; transform: translateY(-50%); }
+    .joystick-bg::after { width: 2px; height: 100%; left: 50%; top: 0; transform: translateX(-50%); }
+    .stick { width: 40px; height: 40px; background: #00d2ff; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transition: top 0.05s, left 0.05s; box-shadow: 0 0 15px #00d2ff; z-index: 10; }
+
+    .center-panel { width: 35%; display: flex; flex-direction: column; justify-content: space-evenly; }
+    
+    .title { text-align: center; color: #00d2ff; margin: 0; font-size: 1.2rem; letter-spacing: 2px; text-transform: uppercase; }
+    
+    .pot-wrapper { display: flex; flex-direction: column; gap: 5px; }
+    progress { width: 100%; height: 18px; border-radius: 10px; overflow: hidden; appearance: none; }
+    progress::-webkit-progress-bar { background-color: #151522; }
+    progress::-webkit-progress-value { background-color: #ff007f; transition: width 0.05s; }
+
+    .digital-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: center; }
+    
+    .toggle { width: 50px; height: 26px; background: #555; border-radius: 13px; position: relative; margin: auto; transition: 0.3s; }
+    .toggle.active { background: #00d2ff; }
+    .toggle-thumb { width: 22px; height: 22px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: 0.3s; }
+    .toggle.active .toggle-thumb { left: 26px; }
+    
+    .btn-indicator { width: 50px; height: 50px; border-radius: 50%; background: #444; margin: auto; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 3px solid #222; transition: 0.2s; }
+    .btn-indicator.active { background: #ff007f; border-color: #ffa6d4; box-shadow: 0 0 20px #ff007f; transform: scale(0.9); }
+    
+    .label { font-size: 0.8rem; color: #aaa; margin-top: 5px; display: block; font-weight: bold;}
+
+    @media screen and (orientation: portrait) {
+      .remote-container { display: none; }
+      body::before { content: 'Rotate your phone to landscape mode to access the control interface.'; font-size: 1.5rem; text-align: center; padding: 20px; color: #ff007f; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="remote-container">
+    <div class="joy-panel">
+      <div class="joystick-bg"><div class="stick" id="stick1"></div></div>
+      <span class="label">Joystick 2</span>
+    </div>
+
+    <div class="center-panel">
+      <h2 class="title">EMRE KALEM</h2>
+      
+      <div class="pot-wrapper">
+        <span class="label">Potentiometer 1</span>
+        <progress id="p1_bar" value="0" max="3310"></progress>
+      </div>
+      
+      <div class="pot-wrapper">
+        <span class="label">Potentiometer 2</span>
+        <progress id="p2_bar" value="0" max="3310"></progress>
+      </div>
+
+      <div class="digital-grid">
+        <div>
+          <div id="sw1" class="toggle"><div class="toggle-thumb"></div></div>
+          <span class="label">MOD 2</span>
+        </div>
+        <div>
+          <div id="sw2" class="toggle"><div class="toggle-thumb"></div></div>
+          <span class="label">MOD 1</span>
+        </div>
+        <div>
+          <div id="btn1" class="btn-indicator">B2</div>
+        </div>
+        <div>
+          <div id="btn2" class="btn-indicator">B1</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="joy-panel">
+      <div class="joystick-bg"><div class="stick" id="stick2"></div></div>
+      <span class="label">Joystick 1</span>
+    </div>
+  </div>
+
+  <script>
+    function mapToPercent(val) { return (val / 3310) * 100; }
+
+    function updateJoystick(id, x, y) {
+      let el = document.getElementById(id);
+      el.style.left = mapToPercent(x) + "%";
+      el.style.top = mapToPercent(3310 - y) + "%";
+    }
+
+    function updateDigital(id, state) {
+      let el = document.getElementById(id);
+      if (state == 1) el.classList.add('active');
+      else el.classList.remove('active');
+    }
+
+    setInterval(function() {
+      fetch('/veri')
+        .then(response => response.json())
+        .then(data => {
+          updateJoystick('stick1', data.j1y, data.j1x);
+          updateJoystick('stick2', data.j2y, data.j2x);
+          
+          document.getElementById('p1_bar').value = data.p1;
+          document.getElementById('p2_bar').value = data.p2;
+
+          updateDigital('sw1', data.sw2);
+          updateDigital('sw2', data.sw1);
+          updateDigital('btn1', data.btn2);
+          updateDigital('btn2', data.btn1);
+        }).catch(err => console.log("Veri bekliyor..."));
+    }, 50);
+  </script>
+</body>
+</html>
+)rawliteral";
+
+void setup() {
+  Serial.begin(115200);
+  analogReadResolution(12);
+
+  // Buton ve switchler için dâhili pull-up dirençlerini aktifleÅŸtiriyoruz
+  pinMode(switch1, INPUT_PULLUP);
+  pinMode(switch2, INPUT_PULLUP);
+  pinMode(button1, INPUT_PULLUP);
+  pinMode(button2, INPUT_PULLUP);
+
+  // --- nRF24L01 Kurulumu ---
+  // ESP32-C6 için varsayÄ±lan SPI pinleri kullanÄ±lÄ±r: MOSI=19, MISO=20, SCK=21
+  if (!radio.begin()) {
+    Serial.println("DIKKAT: nRF24L01 Modulu Bulunamadi!");
+    Serial.println("Web arayuzu calismaya devam edecek ancak RF ile veri gonderilmeyecek.");
+    isRadioConnected = false;
+  } else {
+    isRadioConnected = true;
+    radio.openWritingPipe(radioPipe);
+    radio.setPALevel(RF24_PA_MAX); // DP5 modülü için güç ayarÄ±. Sorun olursa RF24_PA_LOW yap.
+    radio.setDataRate(RF24_250KBPS);
+    radio.stopListening();
+    Serial.println("nRF24L01 Basariyla Baslatildi (Verici Modu).");
+  }
+
+  // --- Wi-Fi ve Captive Portal Kurulumu ---
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ssid);
+  Serial.print("AP Baslatildi. Baglanti IP: "); 
+  Serial.println(WiFi.softAPIP());
+  
+  dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
+
+  server.on("/", []() { 
+    server.send(200, "text/html", index_html); 
+  });
+
+  server.on("/veri", []() {
+    String json = "{";
+    json += "\"j1x\":" + String(sentData.j1x) + ",";
+    json += "\"j1y\":" + String(sentData.j1y) + ",";
+    json += "\"j2x\":" + String(sentData.j2x) + ",";
+    json += "\"j2y\":" + String(sentData.j2y) + ",";
+    json += "\"p1\":"  + String(sentData.p1)  + ",";
+    json += "\"p2\":"  + String(sentData.p2)  + ",";
+    json += "\"sw1\":" + String(sentData.sw1) + ",";
+    json += "\"sw2\":" + String(sentData.sw2) + ",";
+    json += "\"btn1\":"+ String(sentData.btn1)+ ",";
+    json += "\"btn2\":"+ String(sentData.btn2);
+    json += "}";
+    server.send(200, "application/json", json);
+  });
+
+  server.onNotFound([]() { 
+    server.send(200, "text/html", index_html); 
+  });
+  
+  server.begin();
+}
+
+void loop() {
+  dnsServer.processNextRequest();
+  server.handleClient();
+
+  // Her 50 milisaniyede bir donanÄ±mlarÄ± oku ve gönder
+  if (millis() - lastSendTime >= 50) {
+    lastSendTime = millis();
+
+    // Verileri paket içine kaydet
+    sentData.j1x = analogRead(joy1_X);
+    sentData.j1y = analogRead(joy1_Y);
+    sentData.j2x = analogRead(joy2_X);
+    sentData.j2y = analogRead(joy2_Y);
+    sentData.p1  = analogRead(pot1);
+    sentData.p2  = analogRead(pot2);
+    
+    // INPUT_PULLUP olduÄŸu için LOW (0) = BasÄ±lÄ±. Arayüz için Tersliyoruz (!) 
+    sentData.sw1  = !digitalRead(switch1);
+    sentData.sw2  = !digitalRead(switch2);
+    sentData.btn1 = !digitalRead(button1);
+    sentData.btn2 = !digitalRead(button2);
+
+    // EÄžER nRF24L01 sisteme düzgün baÄŸlanmÄ±ÅŸsa veriyi radyo frekansÄ±yla gönder
+    if (isRadioConnected) {
+      radio.write(&sentData, sizeof(Data_Package));
+    }
+
+    // --- Seri Monitöre YazdÄ±rma Bölümü ---
+    Serial.print("J1 [X:"); Serial.print(sentData.j1x);
+    Serial.print(" Y:"); Serial.print(sentData.j1y);
+    Serial.print("] | J2 [X:"); Serial.print(sentData.j2x);
+    Serial.print(" Y:"); Serial.print(sentData.j2y);
+    Serial.print("] | Potlar [P1:"); Serial.print(sentData.p1);
+    Serial.print(" P2:"); Serial.print(sentData.p2);
+    Serial.print("] | SW [1:"); Serial.print(sentData.sw1);
+    Serial.print(" 2:"); Serial.print(sentData.sw2);
+    Serial.print("] | BTN [1:"); Serial.print(sentData.btn1);
+    Serial.print(" 2:"); Serial.print(sentData.btn2);
+    Serial.println("]");
+  }
+}

@@ -16,8 +16,9 @@ void ui_init(const SystemStatus &initial_status) {
     screen_arm   = ui_arm_create();
     screen_apps  = ui_apps_create();
 
-    // Load initial screen (Home)
-    lv_scr_load(screen_home);
+    // Start non-blocking CYNEXIS boot animation (0.0s - 6.0s sequence)
+    // Automatically transitions to screen_home when complete.
+    ui_boot_start(screen_home);
 }
 
 void ui_switch_to(ScreenId screen) {

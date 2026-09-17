@@ -3,8 +3,10 @@
 
 #include <lvgl.h>
 #include "ui_status_card.h"
+#include "ui_boot.h"
 
 enum ScreenId {
+    SCREEN_BOOT,
     SCREEN_HOME,
     SCREEN_ROVER,
     SCREEN_ARM,

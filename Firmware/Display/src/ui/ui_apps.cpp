@@ -183,14 +183,27 @@ static lv_obj_t* create_header_button(lv_obj_t * parent, int x, int y, int w, in
 }
 
 static void create_app_grid(lv_obj_t * parent_container, const AppItem * apps, int count) {
+    Serial.printf("[APP DEBUG] create_app_grid BEGIN parent=%p, count=%d\n", parent_container, count);
     for (int i = 0; i < count; i++) {
+        Serial.printf("[APP DEBUG] item %d BEGIN\n", i);
+        Serial.printf("[APP DEBUG] name pointer = %p (%s)\n", apps[i].name, apps[i].name ? apps[i].name : "NULL");
+        Serial.printf("[APP DEBUG] icon pointer = %p\n", apps[i].icon);
+        if (apps[i].icon) {
+            Serial.printf("[APP DEBUG] icon data = %p\n", apps[i].icon->data);
+        }
+
         int col = i % 3;
         int row = i / 3;
 
         int x = 9 + col * 101; // Col 0: 9, Col 1: 110, Col 2: 211
         int y = 4 + row * 62;  // Row 0: 4 (abs Y=42), Row 1: 66 (abs Y=104), Row 2: 128 (abs Y=166)
 
+        Serial.printf("[APP DEBUG] before card create i=%d parent=%p\n", i, parent_container);
         lv_obj_t * card = lv_btn_create(parent_container);
+        Serial.printf("[APP DEBUG] card = %p\n", card);
+        Serial.printf("[APP DEBUG] card parent = %p\n", card ? lv_obj_get_parent(card) : NULL);
+
+        Serial.printf("[APP DEBUG] before card style setup i=%d\n", i);
         lv_obj_set_size(card, 92, 54);
         lv_obj_set_pos(card, x, y);
 
@@ -214,28 +227,43 @@ static void create_app_grid(lv_obj_t * parent_container, const AppItem * apps, i
 
         // Event Callback for Touch Navigation
         lv_obj_add_event_cb(card, app_card_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)apps[i].target);
+        Serial.printf("[APP DEBUG] after card setup i=%d\n", i);
 
         // Render PNG Icon directly on Card (no icon background tile)
         if (apps[i].icon && apps[i].icon->data) {
+            Serial.printf("[APP DEBUG] before icon create i=%d\n", i);
             lv_obj_t * icon_img = lv_img_create(card);
+            Serial.printf("[APP DEBUG] icon_img = %p\n", icon_img);
+            Serial.printf("[APP DEBUG] before icon source/align i=%d\n", i);
             lv_img_set_src(icon_img, apps[i].icon);
             lv_obj_align(icon_img, LV_ALIGN_TOP_MID, 0, 4);
             lv_obj_clear_flag(icon_img, LV_OBJ_FLAG_CLICKABLE);
+            Serial.printf("[APP DEBUG] after icon source/align i=%d\n", i);
         }
 
         // App Name Label (Dark Navy #0F172A, Montserrat 10)
+        Serial.printf("[APP DEBUG] before label create i=%d\n", i);
         lv_obj_t * lbl_title = lv_label_create(card);
+        Serial.printf("[APP DEBUG] lbl_title = %p\n", lbl_title);
+        Serial.printf("[APP DEBUG] before label align i=%d lbl_title=%p parent=%p\n",
+                      i, lbl_title, lbl_title ? lv_obj_get_parent(lbl_title) : NULL);
         lv_label_set_text(lbl_title, apps[i].name);
         lv_obj_set_style_text_font(lbl_title, &lv_font_montserrat_10, LV_PART_MAIN);
         lv_obj_set_style_text_color(lbl_title, lv_color_hex(0x0F172A), LV_PART_MAIN);
         lv_obj_align(lbl_title, LV_ALIGN_TOP_MID, 0, 34);
         lv_obj_clear_flag(lbl_title, LV_OBJ_FLAG_CLICKABLE);
+        Serial.printf("[APP DEBUG] after label align i=%d\n", i);
+
+        Serial.printf("[APP DEBUG] item %d END\n", i);
     }
+    Serial.printf("[APP DEBUG] create_app_grid END parent=%p\n", parent_container);
 }
 
 lv_obj_t* ui_apps_create() {
+    Serial.println("[APP DEBUG] ui_apps_create BEGIN");
     // 1. Base Screen Container (320x240)
     lv_obj_t * scr = lv_obj_create(NULL);
+    Serial.printf("[APP DEBUG] scr = %p\n", scr);
     lv_obj_set_style_pad_all(scr, 0, LV_PART_MAIN);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
