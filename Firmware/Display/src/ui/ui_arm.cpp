@@ -74,31 +74,31 @@ static void process_arm_touch_point(int16_t x, int16_t y) {
     ui_switch_to(SCREEN_APPS);
   }
   // 2. SERVO SELECTION BUTTONS (Expanded Card 2: X=94..218, Y=38..106)
-  else if (x >= 94 && x <= 155 && y >= 38 && y <= 55) {
+  else if (x >= 104 && x <= 182 && y >= 38 && y <= 55) {
     action_name = "SELECT ARM_A1";
     if (servo_btns[0]) lv_obj_add_state(servo_btns[0], LV_STATE_PRESSED);
     select_servo(0);
-  } else if (x >= 156 && x <= 218 && y >= 38 && y <= 55) {
+  } else if (x >= 183 && x <= 250 && y >= 38 && y <= 55) {
     action_name = "SELECT ARM_A2";
     if (servo_btns[1]) lv_obj_add_state(servo_btns[1], LV_STATE_PRESSED);
     select_servo(1);
-  } else if (x >= 94 && x <= 155 && y >= 56 && y <= 72) {
+  } else if (x >= 104 && x <= 158 && y >= 56 && y <= 72) {
     action_name = "SELECT ARM_B";
     if (servo_btns[2]) lv_obj_add_state(servo_btns[2], LV_STATE_PRESSED);
     select_servo(2);
-  } else if (x >= 156 && x <= 218 && y >= 56 && y <= 72) {
+  } else if (x >= 159 && x <= 259 && y >= 56 && y <= 72) {
     action_name = "SELECT GRIPPER";
     if (servo_btns[3]) lv_obj_add_state(servo_btns[3], LV_STATE_PRESSED);
     select_servo(3);
-  } else if (x >= 94 && x <= 155 && y >= 73 && y <= 89) {
+  } else if (x >= 104 && x <= 181 && y >= 73 && y <= 89) {
     action_name = "SELECT ROOT";
     if (servo_btns[4]) lv_obj_add_state(servo_btns[4], LV_STATE_PRESSED);
     select_servo(4);
-  } else if (x >= 156 && x <= 218 && y >= 73 && y <= 89) {
+  } else if (x >= 182 && x <= 259 && y >= 73 && y <= 89) {
     action_name = "SELECT WRIST_A";
     if (servo_btns[5]) lv_obj_add_state(servo_btns[5], LV_STATE_PRESSED);
     select_servo(5);
-  } else if (x >= 94 && x <= 155 && y >= 90 && y <= 106) {
+  } else if (x >= 94 && x <= 155 && y >= 90 && y <= 108) {
     action_name = "SELECT WRIST_B";
     if (servo_btns[6]) lv_obj_add_state(servo_btns[6], LV_STATE_PRESSED);
     select_servo(6);
@@ -478,6 +478,7 @@ lv_obj_t *ui_arm_create() {
     lv_obj_set_style_radius(servo_btns[i], 3, LV_PART_MAIN);
     lv_obj_set_style_border_width(servo_btns[i], 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(servo_btns[i], lv_color_hex(0xCBD5E1), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(servo_btns[i], lv_color_hex(0x1D4ED8), LV_STATE_PRESSED);
     lv_obj_set_style_pad_all(servo_btns[i], 0, LV_PART_MAIN);
     lv_obj_set_ext_click_area(servo_btns[i], 0);
     lv_obj_clear_flag(servo_btns[i], LV_OBJ_FLAG_CLICKABLE);
