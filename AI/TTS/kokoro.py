@@ -22,7 +22,13 @@ from core.config import settings, PROJECT_ROOT
 from core.state import robot_state
 from AI.TTS.provider import TTSProvider
 from AI.TTS.voice_manager import voice_manager, is_valid_voice, MIN_TTS_SPEED, MAX_TTS_SPEED
-from AI.TTS.audio_output import AudioOutput, LocalAudioOutput, MockAudioOutput
+from AI.TTS.audio_output import (
+    AudioOutput,
+    LocalAudioOutput,
+    MockAudioOutput,
+    RoverAudioOutput,
+    CompositeAudioOutput,
+)
 
 log = get_logger("kokoro_tts")
 
@@ -56,10 +62,17 @@ class KokoroTTSProvider(TTSProvider):
         # Initialize audio output device
         if audio_output is not None:
             self.audio_output = audio_output
-        elif getattr(settings, "tts_play_local", True):
-            self.audio_output = LocalAudioOutput()
         else:
-            self.audio_output = MockAudioOutput()
+            play_local = getattr(settings, "tts_play_local", True)
+            play_rover = getattr(settings, "tts_play_rover", False)
+            if play_local and play_rover:
+                self.audio_output = CompositeAudioOutput([LocalAudioOutput(), RoverAudioOutput()])
+            elif play_rover:
+                self.audio_output = RoverAudioOutput()
+            elif play_local:
+                self.audio_output = LocalAudioOutput()
+            else:
+                self.audio_output = MockAudioOutput()
 
         log.info(f"KokoroTTSProvider initialized (lang_code='{self.lang_code}')")
 

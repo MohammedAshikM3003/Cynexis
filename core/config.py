@@ -66,9 +66,18 @@ class CynexisSettings(BaseSettings):
     tts_speed: float = Field(default=1.0)              # 1.0x = natural human speech pacing
     tts_enabled: bool = Field(default=True)
     tts_play_local: bool = Field(default=True)
+    tts_play_rover: bool = Field(default=False)         # Stream TTS audio to Rover ESP32 MAX98357A speaker
     tts_save_logs: bool = Field(default=False)
     tts_log_path: str = Field(default="./Logs/TTS")
     tts_onnx_intra_threads: int = Field(default=8)
+
+    # Rover Audio (MAX98357A + 4Ω 3W Speaker)
+    rover_audio_enabled: bool = Field(default=True)
+    rover_audio_host: str = Field(default="255.255.255.255") # UDP broadcast or Rover IP
+    rover_audio_port: int = Field(default=50006)
+    rover_i2s_bclk: int = Field(default=19)
+    rover_i2s_ws: int = Field(default=25)
+    rover_i2s_din: int = Field(default=33)
 
     # STT (Speech-to-Text)
     stt_provider: str = Field(default="mock")

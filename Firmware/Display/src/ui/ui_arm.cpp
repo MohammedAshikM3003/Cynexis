@@ -104,7 +104,7 @@ static void process_arm_touch_point(int16_t x, int16_t y) {
     select_servo(6);
   }
   // 3. SERVO ANGLE CONTROL BUTTONS (- / +) (Expanded Targets: MINUS X=102..134, PLUS X=186..218)
-  else if (x >= 102 && x <= 134 && y >= 120 && y <= 148) {
+  else if (x >= 102 && x <= 153 && y >= 120 && y <= 163) {
     action_name = "MINUS ANGLE";
     if (btn_minus) lv_obj_add_state(btn_minus, LV_STATE_PRESSED);
     int16_t cur = arm_state.servo_angles[arm_state.selected_servo];
@@ -120,7 +120,7 @@ static void process_arm_touch_point(int16_t x, int16_t y) {
       update_servo_status_ui();
       Serial.printf("[ARM] Decremented %s angle to %d°\n", servo_names[arm_state.selected_servo], cur);
     }
-  } else if (x >= 186 && x <= 218 && y >= 120 && y <= 148) {
+  } else if (x >= 225 && x <= 262 && y >= 137 && y <= 161) {
     action_name = "PLUS ANGLE";
     if (btn_plus) lv_obj_add_state(btn_plus, LV_STATE_PRESSED);
     int16_t cur = arm_state.servo_angles[arm_state.selected_servo];
@@ -138,11 +138,11 @@ static void process_arm_touch_point(int16_t x, int16_t y) {
     }
   }
   // 4. CONTROL MODE BUTTONS (Y=153..196, X=4..146)
-  else if (x >= 4 && x <= 48 && y >= 153 && y <= 196) {
+  else if (x >= 0 && x <= 48 && y >= 185 && y <= 203) {
     action_name = "MODE GESTURE";
     if (mode_btns[0]) lv_obj_add_state(mode_btns[0], LV_STATE_PRESSED);
     update_control_mode_ui(0);
-  } else if (x >= 49 && x <= 95 && y >= 153 && y <= 196) {
+  } else if (x >= 50 && x <= 98 && y >= 186 && y <= 198) {
     action_name = "MODE VOICE";
     if (mode_btns[1]) lv_obj_add_state(mode_btns[1], LV_STATE_PRESSED);
     update_control_mode_ui(1);
@@ -162,12 +162,12 @@ static void process_arm_touch_point(int16_t x, int16_t y) {
     Serial.println("[ARM CMD] STOP");
   }
   // 6. BOTTOM NAVIGATION BUTTONS (CAMERA | ROVER | ASSISTANT)
-  else if (x >= 0 && x <= 104 && y >= 199 && y <= 239) {
+  else if (x >= 0 && x <= 103 && y >= 217 && y <= 239) {
     action_name = "CAMERA";
     if (action_btn_objs[0]) lv_obj_add_state(action_btn_objs[0], LV_STATE_PRESSED);
     Serial.println("[ARM UI] Navigating to CAMERA APP");
     ui_switch_to(SCREEN_CAMERA);
-  } else if (x >= 105 && x <= 208 && y >= 199 && y <= 239) {
+  } else if (x >= 133 && x <= 206 && y >= 219 && y <= 239) {
     action_name = "ROVER";
     if (action_btn_objs[1]) lv_obj_add_state(action_btn_objs[1], LV_STATE_PRESSED);
     Serial.println("[ARM UI] Navigating to ROVER APP");
