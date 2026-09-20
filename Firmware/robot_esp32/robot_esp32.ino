@@ -45,6 +45,16 @@
 #endif
 
 // ============================================================
+// WI-FI STATIC IP CONFIGURATION (WINDOWS HOTSPOT 192.168.137.X)
+// ============================================================
+#define USE_STATIC_IP       1
+IPAddress staticIP(192, 168, 137, 200);   // Dedicated permanent Rover IP
+IPAddress gateway(192, 168, 137, 1);      // Windows Hotspot Host Gateway
+IPAddress subnet(255, 255, 255, 0);      // Standard /24 Subnet Mask
+IPAddress primaryDNS(192, 168, 137, 1);  // Primary DNS
+IPAddress secondaryDNS(8, 8, 8, 8);      // Secondary DNS
+
+// ============================================================
 // TEST MODE CONFIGURATION
 // Set to 1 to run repeating 440Hz hardware audio test
 // Set to 0 for full normal rover operational mode
@@ -261,7 +271,7 @@ bool initI2S() {
 }
 
 void play440HzTestTone(int duration_ms) {
-    Serial.printf("[AUDIO TEST] Starting 440Hz Sine Wave Tone for %d ms (SampleRate=%dHz, Volume=60%%)...\n",
+    Serial.printf("[AUDIO TEST] Starting 440Hz Sine Wave Tone for %d ms (SampleRate=%dHz, Volume=100%%)...\n",
                   duration_ms, AUDIO_SAMPLE_RATE);
 
     const float freq = 440.0f; // 440 Hz (Concert Pitch A4)
@@ -278,8 +288,8 @@ void play440HzTestTone(int duration_ms) {
         
         for (int i = 0; i < chunk_frames; i++) {
             float t = (float)(frame_idx + i) / (float)AUDIO_SAMPLE_RATE;
-            // 440Hz sine wave scaled to 60% full scale (~19660 out of 32767)
-            int16_t pcm_sample = (int16_t)(sinf(2.0f * M_PI * freq * t) * 19660.0f);
+            // 440Hz sine wave scaled to 100% full scale (~32767 out of 32767)
+            int16_t pcm_sample = (int16_t)(sinf(2.0f * M_PI * freq * t) * 32767.0f);
             
             // Output sample to BOTH Left and Right channels for MAX98357A SD_MODE compatibility
             stereo_buffer[i * 2]     = pcm_sample; // Left channel
@@ -438,12 +448,21 @@ void setup() {
     #if AUDIO_HARDWARE_TEST
     Serial.println("\n--------------------------------------------------");
     Serial.println(" MODE: AUDIO_HARDWARE_TEST ENABLED");
-    Serial.println(" Playing initial 440Hz startup test tone...");
+    Serial.println(" [AUDIO TEST] 440 Hz tone started.");
     Serial.println("--------------------------------------------------\n");
-    play440HzTestTone(2000); // Play 2-second startup tone
+    play440HzTestTone(1000);
     #else
     WiFi.mode(WIFI_STA);
     Serial.println("[WIFI] Connecting to Laptop Hotspot...");
+
+    #if USE_STATIC_IP
+    if (!WiFi.config(staticIP, gateway, subnet, primaryDNS, secondaryDNS)) {
+        Serial.println("[WIFI ERROR] Static IP Configuration Failed!");
+    } else {
+        Serial.println("[WIFI] Static IP configuration enabled.");
+    }
+    #endif
+
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
     // Bounded 3-second non-blocking connection attempt
@@ -456,7 +475,11 @@ void setup() {
         Serial.println("[WIFI] Connected to Laptop Hotspot Successfully!");
         Serial.print("[WIFI] Rover IP Address : ");
         Serial.println(WiFi.localIP());
-        Serial.printf("[WIFI] Signal Strength   : %d dBm\n", WiFi.RSSI());
+        Serial.print("[WIFI] Gateway          : ");
+        Serial.println(WiFi.gatewayIP());
+        Serial.print("[WIFI] Subnet           : ");
+        Serial.println(WiFi.subnetMask());
+        Serial.printf("[WIFI] Signal Strength  : %d dBm\n", WiFi.RSSI());
     } else {
         Serial.println("[WIFI] Connection Timeout. Proceeding in offline ESP-NOW/safety mode.");
     }
@@ -480,14 +503,15 @@ void loop() {
     uint32_t now = millis();
 
     #if AUDIO_HARDWARE_TEST
-    // In AUDIO_HARDWARE_TEST mode, play a 2-second 440Hz tone every 4 seconds
-    static uint32_t lastToneTime = 0;
-    if (now - lastToneTime >= 4000) {
-        lastToneTime = now;
-        digitalWrite(PIN_STATUS_LED, LOW); // Blink LED during tone
-        play440HzTestTone(2000);
-        digitalWrite(PIN_STATUS_LED, HIGH);
+    // In AUDIO_HARDWARE_TEST mode, play 440Hz tone continuously
+    static bool toneStartedLogged = false;
+    if (!toneStartedLogged) {
+        Serial.println("[AUDIO TEST] 440 Hz tone started.");
+        toneStartedLogged = true;
     }
+    digitalWrite(PIN_STATUS_LED, LOW);
+    play440HzTestTone(1000);
+    digitalWrite(PIN_STATUS_LED, HIGH);
     #else
     // Check hardware E-Stop pin
     if (digitalRead(PIN_ESTOP) == HIGH) {

@@ -183,9 +183,9 @@ class RoverAudioOutput(AudioOutput):
                             active_rms = 0.0
                             active_percentage = 0.0
 
-                        # 3. Static Loudness Gain (TARGET_ACTIVE_RMS = 8500.0, MAX_GAIN = 4.0)
-                        TARGET_ACTIVE_RMS = 8500.0
-                        MAX_GAIN = 4.0
+                        # 3. Static Loudness Gain (TARGET_ACTIVE_RMS = 12000.0, MAX_GAIN = 5.0)
+                        TARGET_ACTIVE_RMS = 12000.0
+                        MAX_GAIN = 5.0
 
                         if active_rms > 0:
                             raw_gain = TARGET_ACTIVE_RMS / active_rms
@@ -198,10 +198,10 @@ class RoverAudioOutput(AudioOutput):
                         work *= loudness_gain
                         pre_comp_peak = float(np.max(np.abs(work)))
 
-                        # 4. Real Envelope-Following Compressor (-16dBFS Thresh, 3:1 Ratio, 8dB Knee, 10ms Att, 150ms Rel)
-                        COMP_THRESHOLD_DB = -16.0
-                        COMP_RATIO = 3.0
-                        COMP_KNEE_DB = 8.0
+                        # 4. Real Envelope-Following Compressor (-10dBFS Thresh, 2:1 Ratio, 10dB Knee, 10ms Att, 150ms Rel)
+                        COMP_THRESHOLD_DB = -10.0
+                        COMP_RATIO = 2.0
+                        COMP_KNEE_DB = 10.0
                         COMP_ATTACK_MS = 10.0
                         COMP_RELEASE_MS = 150.0
 
@@ -251,23 +251,40 @@ class RoverAudioOutput(AudioOutput):
                         post_comp_peak = float(np.max(np.abs(work)))
                         max_gain_reduction_db = float(np.min(smoothed_gain_db)) if len(smoothed_gain_db) else 0.0
 
-                        # 5. Automatic Makeup Gain (PEAK_LIMIT = 30000.0, MAX_MAKEUP_DB = 6.0)
+                        # 5. Automatic Makeup Gain (Active RMS recovery up to MAX_MAKEUP_DB = 6.0 dB, min 1.0x)
                         PEAK_LIMIT = 30000.0
                         MAX_MAKEUP_DB = 6.0
 
-                        needed = PEAK_LIMIT / max(post_comp_peak, 1e-9)
+                        if n < frame_len:
+                            post_comp_frame_rms = np.array([np.sqrt(np.mean(work ** 2))])
+                        else:
+                            post_comp_frames = np.lib.stride_tricks.sliding_window_view(work, frame_len)[::hop_len]
+                            post_comp_frame_rms = np.sqrt(np.mean(post_comp_frames ** 2, axis=1))
+
+                        post_comp_active_floor = max(0.08 * (post_comp_frame_rms.max() if len(post_comp_frame_rms) else 0.0), 150.0)
+                        post_comp_active_mask = post_comp_frame_rms > post_comp_active_floor
+                        if np.any(post_comp_active_mask):
+                            post_comp_active_rms = float(np.sqrt(np.mean(post_comp_frame_rms[post_comp_active_mask] ** 2)))
+                        else:
+                            post_comp_active_rms = 0.0
+
+                        if post_comp_active_rms > 0:
+                            needed = TARGET_ACTIVE_RMS / post_comp_active_rms
+                        else:
+                            needed = 1.0
+
                         makeup_cap = 10.0 ** (MAX_MAKEUP_DB / 20.0)
-                        makeup = min(needed, makeup_cap)
+                        makeup = max(1.0, min(needed, makeup_cap))
                         makeup_capped = needed > makeup_cap
 
                         work *= makeup
 
-                        # 6. Fast Peak Limiter (4ms Frame, 1ms Hop, Ceiling=30000, 1ms Att, 40ms Rel)
+                        # 6. Fast Peak Limiter (4ms Frame, 1ms Hop, Ceiling=30000, 0.5ms Att, 10ms Rel)
                         LIM_FRAME_MS = 4.0
                         LIM_HOP_MS = 1.0
                         LIM_CEILING = 30000.0
-                        LIM_ATTACK_MS = 1.0
-                        LIM_RELEASE_MS = 40.0
+                        LIM_ATTACK_MS = 0.5
+                        LIM_RELEASE_MS = 10.0
 
                         lim_frame_len = int(round((LIM_FRAME_MS / 1000.0) * sr_val))  # 96 samples
                         lim_hop_len = int(round((LIM_HOP_MS / 1000.0) * sr_val))      # 24 samples
@@ -305,6 +322,7 @@ class RoverAudioOutput(AudioOutput):
 
                         work *= lim_sample_gain
                         post_lim_peak = float(np.max(np.abs(work)))
+                        lim_max_gr_db = float(np.min(lim_smoothed_db)) if len(lim_smoothed_db) else 0.0
 
                         # 7. Exact Final Peak Safety Check (Must NEVER increase signal)
                         final_peak_now = float(np.max(np.abs(work))) if work.size else 0.0
@@ -351,11 +369,12 @@ class RoverAudioOutput(AudioOutput):
                             f"Gain: {loudness_gain:.2f}x | "
                             f"GainCapped: {'YES' if gain_capped else 'NO'} | "
                             f"PreComp Peak: {pre_comp_peak:.0f} | "
-                            f"GR max: {max_gain_reduction_db:.1f} dB | "
+                            f"Comp GR max: {max_gain_reduction_db:.1f} dB | "
                             f"PostComp Peak: {post_comp_peak:.0f} | "
                             f"Makeup: {makeup:.2f}x | "
                             f"MakeupCapped: {'YES' if makeup_capped else 'NO'} | "
                             f"PostLim Peak: {post_lim_peak:.0f} | "
+                            f"Lim GR max: {lim_max_gr_db:.1f} dB | "
                             f"Final Peak: {final_peak} | "
                             f"Final Active RMS: {final_active_rms:.1f} ({final_active_rms_db:.1f} dB) | "
                             f"Final Crest: {final_crest_db:.1f} dB | "
