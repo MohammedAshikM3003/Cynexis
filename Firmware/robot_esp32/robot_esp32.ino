@@ -59,7 +59,7 @@ IPAddress secondaryDNS(8, 8, 8, 8);      // Secondary DNS
 // Set to 1 to run repeating 440Hz hardware audio test
 // Set to 0 for full normal rover operational mode
 // ============================================================
-#define AUDIO_HARDWARE_TEST   0
+#define AUDIO_HARDWARE_TEST   1
 
 // ============================================================
 // GPIO PIN DEFINITIONS (STRICTLY PRESERVED & AUDITED)
@@ -132,7 +132,7 @@ uint32_t totalMissedPackets = 0;
 void initMotors();
 bool initI2S();
 void initSensors();
-void play440HzTestTone(int duration_ms);
+void play440HzTestTone(int duration_ms, float volume_pct = 50.0f);
 void setMotors(uint8_t cmd, uint8_t speed);
 void stopMotorsImmediately();
 float readObstacleDistanceCm();
@@ -229,7 +229,7 @@ bool initI2S() {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
         .sample_rate = AUDIO_SAMPLE_RATE,             // 24000 Hz
         .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,  // 16-bit PCM
-        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,  // Stereo formatting guarantees Left+Right frame data output
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,   // Mono Left channel formatting
         .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_STAND_I2S),
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = 8,
@@ -270,9 +270,10 @@ bool initI2S() {
     return true;
 }
 
-void play440HzTestTone(int duration_ms) {
-    Serial.printf("[AUDIO TEST] Starting 440Hz Sine Wave Tone for %d ms (SampleRate=%dHz, Volume=100%%)...\n",
-                  duration_ms, AUDIO_SAMPLE_RATE);
+void play440HzTestTone(int duration_ms, float volume_pct) {
+    float scale = (volume_pct / 100.0f) * 32767.0f;
+    Serial.printf("[AUDIO TEST] Starting 440Hz Sine Wave Tone for %d ms (SampleRate=%dHz, Volume=%.0f%%)...\n",
+                  duration_ms, AUDIO_SAMPLE_RATE, volume_pct);
 
     const float freq = 440.0f; // 440 Hz (Concert Pitch A4)
     const int num_frames = (AUDIO_SAMPLE_RATE * duration_ms) / 1000;
@@ -288,8 +289,8 @@ void play440HzTestTone(int duration_ms) {
         
         for (int i = 0; i < chunk_frames; i++) {
             float t = (float)(frame_idx + i) / (float)AUDIO_SAMPLE_RATE;
-            // 440Hz sine wave scaled to 100% full scale (~32767 out of 32767)
-            int16_t pcm_sample = (int16_t)(sinf(2.0f * M_PI * freq * t) * 32767.0f);
+            // 440Hz sine wave scaled by volume_pct (0-100%)
+            int16_t pcm_sample = (int16_t)(sinf(2.0f * M_PI * freq * t) * scale);
             
             // Output sample to BOTH Left and Right channels for MAX98357A SD_MODE compatibility
             stereo_buffer[i * 2]     = pcm_sample; // Left channel
@@ -306,7 +307,7 @@ void play440HzTestTone(int duration_ms) {
         frame_idx += chunk_frames;
     }
 
-    i2s_zero_dma_buffer(I2S_NUM);
+    // i2s_zero_dma_buffer(I2S_NUM);  // Commented out to allow full DMA transmission without buffer truncation
     Serial.printf("[AUDIO TEST COMPLETE] Played 440Hz tone. Total Bytes Written to I2S DMA: %u\n", total_bytes_sent);
 }
 
