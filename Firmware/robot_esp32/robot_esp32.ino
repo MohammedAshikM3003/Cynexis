@@ -34,6 +34,7 @@
 #include <driver/i2s.h>
 #include "cynexis_protocol.h"
 #include "cynexis_mac.h"
+#include "cynexis_voice_sample.h"
 
 // Wi-Fi Hotspot Credentials (matching project wifi_config.h)
 #ifndef WIFI_SSID
@@ -105,7 +106,7 @@ IPAddress secondaryDNS(8, 8, 8, 8);      // Secondary DNS
 
 // I2S Audio Port Configuration
 #define I2S_NUM             I2S_NUM_0
-#define AUDIO_SAMPLE_RATE   24000 // 24kHz matching Kokoro TTS
+#define AUDIO_SAMPLE_RATE   48000 // 48kHz matching MAX98357A PLL hardware rate
 #define AUDIO_UDP_PORT      50006
 #define AUDIO_BUFFER_SIZE   1024
 
@@ -133,6 +134,7 @@ void initMotors();
 bool initI2S();
 void initSensors();
 void play440HzTestTone(int duration_ms, float volume_pct = 50.0f);
+void playMonoPCMVoiceSample(const int16_t* mono_pcm, size_t total_mono_samples);
 void setMotors(uint8_t cmd, uint8_t speed);
 void stopMotorsImmediately();
 float readObstacleDistanceCm();
@@ -229,7 +231,7 @@ bool initI2S() {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
         .sample_rate = AUDIO_SAMPLE_RATE,             // 24000 Hz
         .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,  // 16-bit PCM
-        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,   // Mono Left channel formatting
+        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,  // Standard 2-channel I2S stereo
         .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_STAND_I2S),
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = 8,
@@ -309,6 +311,41 @@ void play440HzTestTone(int duration_ms, float volume_pct) {
 
     // i2s_zero_dma_buffer(I2S_NUM);  // Commented out to allow full DMA transmission without buffer truncation
     Serial.printf("[AUDIO TEST COMPLETE] Played 440Hz tone. Total Bytes Written to I2S DMA: %u\n", total_bytes_sent);
+}
+
+void playMonoPCMVoiceSample(const int16_t* mono_pcm, size_t total_mono_samples) {
+    Serial.printf("[AUDIO VOICE] Playing \"CYNEXIS online.\" sample (%u samples, %.2f sec)...\n",
+                  (uint32_t)total_mono_samples, (float)total_mono_samples / 48000.0f);
+    Serial.println("[AUDIO VOICE] Digital playback scale = 100%");
+
+    int16_t stereo_buffer[1024]; // 512 stereo frames = 2048 bytes in RAM
+    size_t sample_idx = 0;
+    size_t bytes_written = 0;
+    uint32_t total_bytes_sent = 0;
+
+    while (sample_idx < total_mono_samples) {
+        size_t frames_to_pack = min((size_t)512, total_mono_samples - sample_idx);
+
+        for (size_t f = 0; f < frames_to_pack; f++) {
+            int16_t s = (int16_t)pgm_read_word(&mono_pcm[sample_idx + f]);
+            int32_t scaled = s;
+            int16_t out = (int16_t)scaled;
+
+            stereo_buffer[f * 2]     = out; // Left channel
+            stereo_buffer[f * 2 + 1] = out; // Right channel
+        }
+
+        size_t chunk_bytes = frames_to_pack * 2 * sizeof(int16_t);
+        esp_err_t res = i2s_write(I2S_NUM, stereo_buffer, chunk_bytes, &bytes_written, portMAX_DELAY);
+        if (res == ESP_OK) {
+            total_bytes_sent += bytes_written;
+        }
+
+        sample_idx += frames_to_pack;
+    }
+
+    i2s_zero_dma_buffer(I2S_NUM);
+    Serial.printf("[AUDIO VOICE COMPLETE] Finished voice sample. Total Bytes Written: %u\n", total_bytes_sent);
 }
 
 void initSensors() {
@@ -504,15 +541,17 @@ void loop() {
     uint32_t now = millis();
 
     #if AUDIO_HARDWARE_TEST
-    // In AUDIO_HARDWARE_TEST mode, play 440Hz tone continuously
+    // In AUDIO_HARDWARE_TEST mode, play embedded voice sample
     static bool toneStartedLogged = false;
     if (!toneStartedLogged) {
-        Serial.println("[AUDIO TEST] 440 Hz tone started.");
+        Serial.println("[AUDIO TEST] Local PCM Voice Sample Test started.");
         toneStartedLogged = true;
     }
     digitalWrite(PIN_STATUS_LED, LOW);
-    play440HzTestTone(1000);
+    playMonoPCMVoiceSample(voice_sample_mono, VOICE_SAMPLE_MONO_SAMPLES);
+    i2s_zero_dma_buffer(I2S_NUM);
     digitalWrite(PIN_STATUS_LED, HIGH);
+    delay(2000);
     #else
     // Check hardware E-Stop pin
     if (digitalRead(PIN_ESTOP) == HIGH) {

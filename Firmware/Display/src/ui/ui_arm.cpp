@@ -146,17 +146,17 @@ static void process_arm_touch_point(int16_t x, int16_t y) {
     action_name = "MODE VOICE";
     if (mode_btns[1]) lv_obj_add_state(mode_btns[1], LV_STATE_PRESSED);
     update_control_mode_ui(1);
-  } else if (x >= 96 && x <= 146 && y >= 153 && y <= 196) {
+  } else if (x >= 114 && x <= 146 && y >= 189 && y <= 196) {
     action_name = "MODE JOYSTICK";
     if (mode_btns[2]) lv_obj_add_state(mode_btns[2], LV_STATE_PRESSED);
     update_control_mode_ui(2);
   }
   // 5. ARM ACTION BUTTONS (REST ARM / STOP)
-  else if (x >= 154 && x <= 226 && y >= 153 && y <= 196) {
+  else if (x >= 193 && x <= 223 && y >= 185 && y <= 196) {
     action_name = "REST ARM";
     if (btn_rest) lv_obj_add_state(btn_rest, LV_STATE_PRESSED);
     Serial.println("[ARM CMD] REST ARM");
-  } else if (x >= 228 && x <= 308 && y >= 153 && y <= 196) {
+  } else if (x >= 295 && x <= 319 && y >= 185 && y <= 196) {
     action_name = "STOP";
     if (btn_stop) lv_obj_add_state(btn_stop, LV_STATE_PRESSED);
     Serial.println("[ARM CMD] STOP");
@@ -172,7 +172,7 @@ static void process_arm_touch_point(int16_t x, int16_t y) {
     if (action_btn_objs[1]) lv_obj_add_state(action_btn_objs[1], LV_STATE_PRESSED);
     Serial.println("[ARM UI] Navigating to ROVER APP");
     ui_switch_to(SCREEN_ROVER);
-  } else if (x >= 209 && x <= 319 && y >= 199 && y <= 239) {
+  } else if (x >= 261 && x <= 319 && y >= 214 && y <= 239) {
     action_name = "ASSISTANT";
     if (action_btn_objs[2]) lv_obj_add_state(action_btn_objs[2], LV_STATE_PRESSED);
     Serial.println("[ARM UI] Navigating to ASSISTANT APP");

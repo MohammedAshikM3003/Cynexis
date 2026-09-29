@@ -3,18 +3,21 @@
 #include "ui_rover.h"
 #include "ui_arm.h"
 #include "ui_apps.h"
+#include "ui_assistant.h"
 
 static lv_obj_t * screen_home = NULL;
 static lv_obj_t * screen_rover = NULL;
 static lv_obj_t * screen_arm = NULL;
 static lv_obj_t * screen_apps = NULL;
+static lv_obj_t * screen_assistant = NULL;
 
 void ui_init(const SystemStatus &initial_status) {
     // Create screens
-    screen_home  = ui_home_create(initial_status);
-    screen_rover = ui_rover_create();
-    screen_arm   = ui_arm_create();
-    screen_apps  = ui_apps_create();
+    screen_home      = ui_home_create(initial_status);
+    screen_rover     = ui_rover_create();
+    screen_arm       = ui_arm_create();
+    screen_apps      = ui_apps_create();
+    screen_assistant = ui_assistant_create();
 
     // Start non-blocking CYNEXIS boot animation (0.0s - 6.0s sequence)
     // Automatically transitions to screen_home when complete.
@@ -36,7 +39,7 @@ void ui_switch_to(ScreenId screen) {
             if (screen_apps) lv_scr_load(screen_apps);
             break;
         case SCREEN_ASSISTANT:
-            Serial.println("[UI NAV] Assistant App tapped (screen pending implementation)");
+            if (screen_assistant) lv_scr_load(screen_assistant);
             break;
         case SCREEN_CAMERA:
             Serial.println("[UI NAV] Camera App tapped (screen pending implementation)");
