@@ -319,6 +319,9 @@ ESP32 GPIO ──[100Ω]── 2N2222 BASE
 | PCA9685 over direct PWM | Frees ESP32 pins, hardware PWM | Direct PWM: wastes GPIO, jitter | 2026-08-03 |
 | USB camera (V1) | Simplicity, zero extra cost | Raspberry Pi cam: +$35, added complexity | 2026-08-03 |
 | Buzzer optional | OLED+vibration sufficient for V1 | Keep: only adds value for critical alert | 2026-08-03 |
+| Cloud-Primary Camera Storage | Primary repository in cloud + optional local buffer on disconnect | Mandatory microSD: unnecessary overhead when cloud upload is available | 2026-09-30 |
+| Controllable LED Illumination | Separate LED lighting from optical sensor for clear low-light vision | Sensor-only: insufficient lighting for night/dark navigation | 2026-09-30 |
+| 3 Visual Data Tiers | Stream (live), Photo (cloud), VLM Frame (AI agent) | Single stream for all: wastes bandwidth & cloud storage | 2026-09-30 |
 
 ---
 
@@ -334,5 +337,20 @@ ESP32 GPIO ──[100Ω]── 2N2222 BASE
 
 ---
 
-*Last updated: 2026-08-03*
+## SECTION 11 — LOGS & UPDATES
+
+### [2026-09-30] — Cynexis Camera System Architecture Finalized
+- Finalized 25-point planned camera architecture:
+  1. Camera acts as visual sensor ("eyes") for Cynexis Agent.
+  2. Front chassis mounting clear of 4-DOF robotic arm sweep & GPS.
+  3. Controllable front White LED illumination system.
+  4. Cloud-primary object storage & database metadata indexing (timestamp, camera ID, GPS coordinates, URLs, AI status).
+  5. Optional local storage buffer used strictly for auto-uploading when internet recovers from offline state.
+  6. 3 Visual Data Tiers: Live Feed, Captured Photos, AI Vision Frames.
+  7. Cynexis Web Dashboard integration (live view, capture button, light switch, health monitor, image history).
+
+---
+
+*Last updated: 2026-09-30*
 *CYNEXIS Development Notebook — Keep this file updated daily.*
+

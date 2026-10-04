@@ -4,6 +4,20 @@ All notable changes to this project will be documented here.
 Format: `[YYYY-MM-DD] | Type | Description`
 Types: ADDED | CHANGED | REMOVED | FIXED | ARCHITECTURE | HARDWARE | SOFTWARE
 
+## [2026-09-30] — Camera System Architecture Update
+
+### ARCHITECTURE
+- Formally incorporated the complete 25-point Cynexis Camera System Architecture into `CYNEXIS_MASTER_SPECIFICATION.md`, `Camera_Hardware.md`, and `Vision_System.md`.
+- **Cloud-Primary Image Repository**: Captured photos upload directly to Cloud Object Storage with database metadata indexing (timestamp, camera ID, GPS coordinates, URLs, status).
+- **Optional microSD / Offline Buffer**: Local storage designated as a temporary offline buffer for auto-retry on reconnect rather than permanent local storage.
+- **3 Visual Data Tiers**: Categorized visual data into Live Feed Stream (teleoperation), Captured Photographs (cloud storage), and AI Vision Frames (VLM processing).
+- **Hardware & Mounting**: Dedicated camera module + controllable White LED illumination positioned for forward view clear of top 4-DOF robotic arm sweep & GPS.
+
+### ADDED
+- Software control specification for front White LED illumination.
+- Camera health & status telemetry specification.
+- 7-Phase Camera Development Roadmap.
+
 ---
 
 ## [2026-08-17] — Phase 3/4: Robot Integration & 3-Node Topology

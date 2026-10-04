@@ -127,9 +127,10 @@ What you can test with List B:
 | 2 | DC Gear Motor 12V (150-300 RPM) | 4 | 200 | 800 |
 | 3 | MG996R Servo Motor | 4 | 250 | 1,000 |
 | 4 | 4-DOF Aluminium Arm Kit | 1 | 800 | 800 |
-| 5 | USB Webcam (720p minimum, 30fps) | 1 | 600 | 600 |
+| 5 | Dedicated Camera Module (1080p, low-latency stream) | 1 | 600 | 600 |
+| 6 | White LED Illumination Module / High-Power LED | 1 | 100 | 100 |
 
-### LIST C TOTAL: Rs. 4,400
+### LIST C TOTAL: Rs. 4,500
 
 ---
 

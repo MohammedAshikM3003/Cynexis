@@ -6,6 +6,8 @@
 #include "ui/ui_home.h"
 #include "system/time_manager.h"
 
+#include "system/inmp441_test.h"
+
 // System status with plain integer POD color representations
 static SystemStatus sys_status = {
     .rover = {
@@ -41,6 +43,9 @@ void setup() {
     Serial.println("   CYNEXIS ESP32 TOUCH DISPLAY SYSTEM    ");
     Serial.println("=========================================");
 
+    // INMP441 Microphone Hardware Test Setup
+    inmp441_test_setup();
+
     // 1. Ensure TOUCH_CS is HIGH (deselected) before SPI initialization
     pinMode(TOUCH_CS, OUTPUT);
     digitalWrite(TOUCH_CS, HIGH);
@@ -65,6 +70,9 @@ void setup() {
 }
 
 void loop() {
+    // Run INMP441 Microphone Hardware Test Loop
+    inmp441_test_loop();
+
     // 1. Precise millisecond tick increment for LVGL internal scheduler
     static uint32_t last_tick = millis();
     uint32_t now = millis();

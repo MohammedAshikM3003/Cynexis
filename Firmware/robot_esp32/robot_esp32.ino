@@ -316,7 +316,7 @@ void play440HzTestTone(int duration_ms, float volume_pct) {
 void playMonoPCMVoiceSample(const int16_t* mono_pcm, size_t total_mono_samples) {
     Serial.printf("[AUDIO VOICE] Playing \"CYNEXIS online.\" sample (%u samples, %.2f sec)...\n",
                   (uint32_t)total_mono_samples, (float)total_mono_samples / 48000.0f);
-    Serial.println("[AUDIO VOICE] Digital playback scale = 100%");
+    Serial.println("[AUDIO VOICE] Digital playback scale = 90%");
 
     int16_t stereo_buffer[1024]; // 512 stereo frames = 2048 bytes in RAM
     size_t sample_idx = 0;
@@ -328,7 +328,7 @@ void playMonoPCMVoiceSample(const int16_t* mono_pcm, size_t total_mono_samples) 
 
         for (size_t f = 0; f < frames_to_pack; f++) {
             int16_t s = (int16_t)pgm_read_word(&mono_pcm[sample_idx + f]);
-            int32_t scaled = s;
+            int32_t scaled = ((int32_t)s * 90) / 100;
             int16_t out = (int16_t)scaled;
 
             stereo_buffer[f * 2]     = out; // Left channel

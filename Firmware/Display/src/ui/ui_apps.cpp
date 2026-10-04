@@ -331,11 +331,9 @@ lv_obj_t* ui_apps_create() {
     lv_obj_clear_flag(title, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
 
-    // 5c. Header Page Navigation Button (Right Header: PAGE 2 > / PAGE 1 <)
+    // Header Page Navigation Button (Right Header: PAGE 2 > / PAGE 1 <)
     // Matches < HOME exactly in visible size (W=66, H=26, Y=6, local X=238).
-    // Extended click area (+25px) ensures physical touches up to X=319 / Y=22 are captured seamlessly.
     btn_page_nav = create_header_button(glass_panel, 238, 6, 66, 26, "PAGE 2 >", btn_page_nav_cb, &lbl_page_nav);
-    lv_obj_set_ext_click_area(btn_page_nav, 25);
 
     // Move header buttons to top of z-index
     lv_obj_move_foreground(btn_back);

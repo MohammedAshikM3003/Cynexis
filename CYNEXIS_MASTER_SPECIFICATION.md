@@ -143,7 +143,9 @@ These features existed in the old concept. They are **permanently removed**.
 
 | ID | Component | Qty | Specs |
 |----|-----------|-----|-------|
-| VS01 | USB Webcam | 1 | 1080p, autofocus, ≥30fps |
+| VS01 | Dedicated Camera Module | 1 | 1080p, low-latency stream, compact rover front mount |
+| VS02 | White LED Illumination | 1-2 | Software-controllable front LED flash/light |
+
 
 ### 4.5 Prototyping (shared)
 
@@ -316,31 +318,82 @@ CYNEXIS OS is a full graphical interface running on the status glove's 3.5" touc
 
 ---
 
-## 10. CAMERA TRANSPORT PATH
+## 10. CAMERA & VISION SYSTEM ARCHITECTURE
 
-The vision pipeline is explicitly:
+### 10.1 Overview & Purpose
+The camera system acts as the **visual sensor ("eyes") for the Cynexis Agent**, streaming live video, capturing photographs, uploading to cloud storage, and providing visual data to AI vision models (VLM) and the Cynexis Web Dashboard.
 
 ```
-[Robot] ── USB cable ──► [Laptop USB port]
-                                │
-                          OpenCV (capture)
-                                │
-                    ┌───────────┴───────────┐
-                    │                       │
-               MediaPipe                  YOLO
-             (hand/pose)            (object detect)
-                    │                       │
-                DeepSORT              FastAPI server
-             (tracking)                     │
-                    └───────────┬───────────┘
-                                │
-                         WebSocket
-                                │
-                         Robot ESP32
-                         (commands)
+                    ┌──────────────────────────┐
+                    │       CYNEXIS AGENT      │
+                    │                          │
+                    │  Vision / AI Processing  │
+                    └────────────┬─────────────┘
+                                 │
+                         Commands / Analysis
+                                 │
+                                 ▼
+┌────────────────────────────────────────────────────────────┐
+│                     CYNEXIS ROVER                          │
+│                                                            │
+│   ┌──────────────┐       ┌─────────────────────────────┐  │
+│   │ Camera       │──────▶│ Camera Controller           │  │
+│   │ Module       │       │                             │  │
+│   └──────────────┘       │ Capture / Stream / Control  │  │
+│          │               └──────────────┬──────────────┘  │
+│          │                              │                 │
+│          ▼                              ▼                 │
+│   ┌──────────────┐              ┌───────────────┐        │
+│   │ LED / Light  │              │ Rover Network │        │
+│   └──────────────┘              └───────┬───────┘        │
+│                                         │                 │
+└─────────────────────────────────────────┼─────────────────┘
+                                          │
+                                          ▼
+                              ┌──────────────────────┐
+                              │   Internet / Cloud   │
+                              └──────────┬───────────┘
+                                         │
+                         ┌───────────────┴──────────────┐
+                         ▼                              ▼
+                 ┌───────────────┐              ┌──────────────┐
+                 │ Image Storage │              │ Cynexis Web  │
+                 │ / Database    │              │ Dashboard    │
+                 └───────────────┘              └──────────────┘
 ```
 
-> Camera is USB-connected directly to the laptop — **not Wi-Fi streamed**. This eliminates latency and compression artifacts. The laptop processes all vision and sends only command outputs to the robot over Wi-Fi.
+### 10.2 Key Architectural Decisions
+1. **Cloud-Primary Image Repository**: Captured images are uploaded directly to Cloud Object Storage, while metadata (timestamp, GPS lat/long, camera_id, file/thumbnail URL, AI status) is indexed in the Database.
+2. **Optional microSD / Offline Buffer**: Permanent image storage resides in the cloud. Local storage is used strictly as a temporary buffer when network connectivity is offline, uploading automatically when connection restores.
+3. **Controllable Illumination**: Dedicated controllable front White LED light system paired with the camera module for low-light navigation.
+4. **Mechanical Clearance**: Mounted at the front of the rover below and clear of the 4-DOF robotic arm to prevent view obstruction, mechanical collision, or GPS interference.
+5. **Three Visual Data Tiers**:
+   - **Live Video Feed**: Temporary low-latency stream for live dashboard viewing.
+   - **Captured Photographs**: Stored permanently in Cloud Storage with metadata index.
+   - **AI Vision Frames**: Specific frames dispatched to the AI Vision VLM pipeline for agent scene analysis.
+
+### 10.3 Vision Pipeline
+
+```
+[Robot] ── USB / Wi-Fi Cable ──► [Camera Controller]
+                                         │
+                                   OpenCV (capture)
+                                         │
+                             ┌───────────┴───────────┐
+                             │                       │
+                        MediaPipe                  YOLO
+                      (hand/pose)            (object detect)
+                             │                       │
+                         DeepSORT              FastAPI server
+                      (tracking)                     │
+                             └───────────┬───────────┘
+                                         │
+                                  Cloud / Web / AI
+                                         │
+                                   Cynexis Agent
+```
+
+> Camera transport ensures low latency for real-time visual teleoperation while providing on-demand capture dispatches to Cloud Storage and the local VLM engine.
 
 ---
 
